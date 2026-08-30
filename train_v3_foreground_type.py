@@ -21,7 +21,11 @@ def main():
     parser.add_argument("--cod_path", nargs="+", required=True)
     parser.add_argument("--usc_root", default="")
     parser.add_argument("--backbone_checkpoint", required=True)
-    parser.add_argument("--v3_checkpoint", default="", help="verified V3 checkpoint used to initialize the complete model")
+    parser.add_argument(
+        "--v3_checkpoint",
+        default="",
+        help="optional warm-start ablation; omit for the canonical PVT-initialized end-to-end run",
+    )
     parser.add_argument("--output", default="./output_foreground_type")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=8)

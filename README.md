@@ -19,7 +19,11 @@ uncertainty/boundary evidence. Therefore the new model starts exactly at the
 V3 foreground behavior while allowing semantic evidence to learn a bounded
 union-mask correction during the same end-to-end run.
 
-Train all components together:
+The canonical experiment initializes only the PVT-v2-B2 backbone and trains
+the V3 decoder/refinement, allocator, and semantic correction together in one
+end-to-end run. It does not require a trained JointSCOD checkpoint.
+
+Train all components together from PVT:
 
 ```bash
 python train_v3_foreground_type.py \
@@ -30,6 +34,9 @@ python train_v3_foreground_type.py \
   --output ./output_foreground_type \
   --epochs 50 --batch_size 8 --base_lr 1e-4 --seed 42 --gpu 0
 ```
+
+`--v3_checkpoint` is optional and reserved for a separate warm-start
+ablation. Do not pass it in the primary from-scratch comparison.
 
 Infer all three masks in one pass:
 

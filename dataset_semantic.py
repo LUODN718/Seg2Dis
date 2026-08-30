@@ -37,15 +37,19 @@ class SemanticJointDataset(Dataset):
         self.samples = []
         if sod and cod:
             count = max(len(sod), len(cod))
-            self.samples.extend((sod * count)[:count])
-            self.samples.extend((cod * count)[:count])
+            self.samples.extend(sod[index % len(sod)] for index in range(count))
+            self.samples.extend(cod[index % len(cod)] for index in range(count))
+        usc_count = 0
         if usc_root:
             root = Path(usc_root)
             ids = (root / "ImageSets" / "Segmentation" / "train.txt").read_text(encoding="utf-8-sig").splitlines()
-            self.samples.extend((root / "JPEGImages" / f"{item.strip()}.jpg", root / "SegmentationClass" / f"{item.strip()}.png", "usc") for item in ids if item.strip())
+            usc_samples = [(root / "JPEGImages" / f"{item.strip()}.jpg", root / "SegmentationClass" / f"{item.strip()}.png", "usc") for item in ids if item.strip()]
+            self.samples.extend(usc_samples)
+            usc_count = len(usc_samples)
         if not self.samples:
             raise RuntimeError("No training samples found")
-        print(f"[SemanticDataset] total={len(self.samples)} sod={len(sod)} cod={len(cod)} usc={len(self.samples)-len(sod)-len(cod)}")
+        balanced_count = max(len(sod), len(cod)) if sod and cod else 0
+        print(f"[SemanticDataset] total={len(self.samples)} sod={balanced_count} cod={balanced_count} usc={usc_count}")
 
     def __len__(self):
         return len(self.samples)
