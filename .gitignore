@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.DS_Store
+.idea/
+
+*.pth
+*.pt
+*.ckpt
+output/
+results/
+visualizations/
+
+visualize_dgf_best_subtraction.py
