@@ -57,15 +57,27 @@ class SemanticJointDataset(Dataset):
     def __getitem__(self, index):
         image_path, mask_path, source = self.samples[index]
         image = Image.open(image_path).convert("RGB")
-        raw = np.asarray(Image.open(mask_path))
         if source == "usc":
+            raw = np.asarray(Image.open(mask_path))
             values = set(np.unique(raw).tolist())
             if not values.issubset({0, 1, 2}):
                 palette = Image.open(mask_path).getpalette() or []
                 colors = {(0, 0, 0): 0, (255, 0, 0): 1, (0, 255, 0): 2}
                 raw = np.vectorize(lambda v: colors[tuple(palette[int(v) * 3:int(v) * 3 + 3])], otypes=[np.int64])(raw)
         else:
-            raw = (raw > 0).astype(np.uint8)
+            # Some DUTS/COD masks are stored as RGB PNG/JPEG files. Converting
+            # them to luminance first guarantees one HxW binary target instead
+            # of accidentally retaining an HxWx3 tensor in mixed batches.
+            raw = (np.asarray(Image.open(mask_path).convert("L")) > 0).astype(np.uint8)
+        if raw.ndim != 2:
+            raise RuntimeError(
+                f"Expected a 2D semantic mask, got shape={raw.shape}: {mask_path}"
+            )
+        values = set(np.unique(raw).tolist())
+        if not values.issubset({0, 1, 2}):
+            raise RuntimeError(
+                f"Expected semantic labels 0/1/2, got {sorted(values)}: {mask_path}"
+            )
         original_size = (raw.shape[0], raw.shape[1])
         image = image.resize((self.image_size, self.image_size), Image.Resampling.BILINEAR)
         mask = Image.fromarray(raw.astype(np.uint8)).resize((self.image_size, self.image_size), Image.Resampling.NEAREST)

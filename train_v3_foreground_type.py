@@ -17,8 +17,8 @@ from utils.loss import structure_loss
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--sod_path", nargs="+", required=True)
-    parser.add_argument("--cod_path", nargs="+", required=True)
+    parser.add_argument("--sod_path", nargs="*", default=[])
+    parser.add_argument("--cod_path", nargs="*", default=[])
     parser.add_argument("--usc_root", default="")
     parser.add_argument("--backbone_checkpoint", required=True)
     parser.add_argument(

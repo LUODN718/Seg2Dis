@@ -9,5 +9,7 @@ __pycache__/
 output/
 results/
 visualizations/
+output_*/
+results_*/
 
 visualize_dgf_best_subtraction.py

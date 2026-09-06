@@ -19,6 +19,17 @@ def main():
     parser.add_argument("--output", required=True)
     parser.add_argument("--device", choices=("auto", "cuda", "mps", "cpu"), default="auto")
     parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument(
+        "--mask_key",
+        choices=("union", "base_final", "sod", "cod"),
+        default="union",
+        help="prediction to export; base_final bypasses the semantic correction",
+    )
+    parser.add_argument(
+        "--union_only",
+        action="store_true",
+        help="save only the task-agnostic foreground mask with the original filename",
+    )
     args = parser.parse_args()
     if args.device == "mps": device = torch.device("mps")
     elif args.device == "cpu": device = torch.device("cpu")
@@ -38,10 +49,13 @@ def main():
             output = model(batch["image"].to(device))
             height, width = int(batch["original_size"][0][0]), int(batch["original_size"][1][0])
             stem = os.path.splitext(batch["name"][0])[0]
-            for key in ("union", "sod", "cod"):
-                probability = F.interpolate(output[key], (height, width), mode="bilinear", align_corners=False).sigmoid()[0, 0]
+            keys = (args.mask_key,) if args.union_only else ("union", "sod", "cod")
+            for key in keys:
+                prediction = output[key]
+                probability = F.interpolate(prediction, (height, width), mode="bilinear", align_corners=False).sigmoid()[0, 0]
                 array = (probability.clamp(0, 1).cpu().numpy() * 255).astype(np.uint8)
-                Image.fromarray(array).save(os.path.join(args.output, f"{stem}_{key}.png"))
+                filename = f"{stem}.png" if args.union_only else f"{stem}_{key}.png"
+                Image.fromarray(array).save(os.path.join(args.output, filename))
 
 
 if __name__ == "__main__":

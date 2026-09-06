@@ -1,246 +1,117 @@
-# JointSCOD
+# JointDiff
 
-## V3 Foreground-Type Allocation (JointDiff)
+JointDiff is the V3 foreground-type allocation model for joint salient object
+detection (SOD) and camouflaged object detection (COD).
 
-This repository also contains an end-to-end extension of the verified V3
-baseline. It preserves V3's unified foreground mask and adds a pixel-level
-SOD/COD allocator for USC12K mixed scenes. The allocator predicts
-`P(type | foreground)` and produces `union`, `sod`, `cod`, and three-class
-probabilities. It is not a whole-image task classifier.
+## Model
 
 ```text
-PVT-v2-B2 + V3 Master/Refinement -> P(union)
-                              \-> foreground-conditioned SOD/COD allocator
-                                  -> P(background), P(SOD), P(COD)
+PVT-v2-B2 ImageNet-1K backbone
+  + Master Decoder
+  + blurred soft-erasure residual evidence
+  + S4/S3 context-only refinement
+  + S2/S1 Add/Remove refinement
+  + foreground-type allocation head
 ```
 
-The semantic correction residual is zero-initialized and restricted by V3
-uncertainty/boundary evidence. Therefore the new model starts exactly at the
-V3 foreground behavior while allowing semantic evidence to learn a bounded
-union-mask correction during the same end-to-end run.
-
-The canonical experiment initializes only the PVT-v2-B2 backbone and trains
-the V3 decoder/refinement, allocator, and semantic correction together in one
-end-to-end run. It does not require a trained JointSCOD checkpoint.
-
-Train all components together from PVT:
-
-```bash
-python train_v3_foreground_type.py \
-  --sod_path /path/to/SOD/SOD-TrainDataset/DUTS-TR \
-  --cod_path /path/to/COD/TrainDataset \
-  --usc_root /path/to/USC12K \
-  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --output ./output_foreground_type \
-  --epochs 50 --batch_size 8 --base_lr 1e-4 --seed 42 --gpu 0
-```
-
-`--v3_checkpoint` is optional and reserved for a separate warm-start
-ablation. Do not pass it in the primary from-scratch comparison.
-
-Infer all three masks in one pass:
-
-```bash
-python infer_v3_foreground_type.py \
-  --path /path/to/test/root \
-  --checkpoint ./output_foreground_type/best.pth \
-  --output ./results_foreground_type \
-  --device cuda --gpu 0
-```
-
-`union` is the standard task-agnostic foreground output; `sod` and `cod` are
-the pixel-level task-specific outputs for USC12K Scene-C analysis.
-
-JointSCOD is the joint SOD/COD training repository built on the confirmed
-MRFNet V3 baseline.
-
-The `main` branch keeps the current canonical baseline only: one shared
-foreground segmentation model, one prediction head, no task flag at inference,
-and the new 50-epoch joint training strategy.
-
-## Canonical Baseline
+The model first predicts a task-agnostic foreground mask, then assigns each
+foreground pixel to SOD or COD:
 
 ```text
-Backbone: PVT-v2-B2
-Model: FrequencyAdaptiveRefinementNet
-Variant: v3_joint_shared
-Ablation: no_gate_no_frequency_s4_s3_context
-Training script: train_joint_direction.py
-Experiment: baseline
-Loss: structure_loss(final, GT)
-Task flag at inference: not required
+P(foreground)
+P(SOD | foreground)
+P(COD | foreground)
 ```
 
-The structure follows the best V3 setting:
+The final probabilities are:
 
 ```text
-PVT-v2-B2 Backbone
-+ Master Decoder
-+ Residual Pyramid
-+ S4/S3 context-only refinement
-+ S2/S1 Add/Remove refinement
-+ no Gate
-+ no Frequency branch
+background = 1 - P(foreground)
+SOD        = P(foreground) * P(SOD | foreground)
+COD        = P(foreground) * P(COD | foreground)
 ```
 
-```mermaid
-flowchart TD
-    I["Input image"] --> B["PVT-v2-B2 backbone"]
-    B --> F["Multi-scale features"]
-    F --> M["Master decoder"]
-    M --> P0["Master mask"]
+The canonical model is `V3ForegroundTypeAllocationNet` with variant
+`v3_foreground_type_allocation`.
 
-    I --> R["Residual pyramid"]
-    P0 --> R
-    F --> C4["S4 context-only"]
-    R --> C4
-    C4 --> C3["S3 context-only"]
-    C3 --> A2["S2 Add/Remove refinement"]
-    A2 --> A1["S1 boundary Add/Remove refinement"]
-    A1 --> O["Final mask"]
-```
+## Training
 
-## Training Logic
-
-The current baseline is task-agnostic joint learning:
-
-- SOD and COD samples are mixed during training.
-- The model is not told which task to output during inference.
-- Only the final prediction is supervised by the standard structure loss.
-- Master, residual, erase, and Add/Remove refinement are shared by both tasks.
-
-This is the clean baseline used for later SOD/COD disambiguation experiments.
-Older asymmetric, adapter, and self-routed strategies are not the recommended
-main path anymore.
-
-## Canonical Training Command
-
-PowerShell example used for the confirmed baseline:
+The canonical joint run balances SOD and COD samples and optionally adds
+USC12K pixel-labelled samples. It starts from the ImageNet-1K PVT-v2-B2
+checkpoint and trains the complete network end to end.
 
 ```powershell
-$repo = "C:\Users\lixianfeng\Desktop\JointSCOD"
-$py   = "C:\Users\lixianfeng\anaconda3\envs\JointSCOD\python.exe"
-if (-not (Test-Path -LiteralPath $py)) { $py = "python" }
-
-& $py -u "$repo\train_joint_direction.py" `
-  --experiment baseline `
-  --sod_path "$repo\SOD\SOD-TrainDataset\DUTS-TR" `
-  --cod_path "$repo\COD\TrainDataset" `
-  --backbone_checkpoint "$repo\pvt_v2_b2.pth" `
-  --output "$repo\output_direction_baseline" `
-  --batch_size 8 `
+conda activate JointSCOD
+python -u .\train_v3_foreground_type.py `
+  --sod_path "C:\path\to\SOD-TrainDataset\DUTS-TR" `
+  --cod_path "C:\path\to\COD\TrainDataset" `
+  --backbone_checkpoint "C:\path\to\pvt_v2_b2.pth" `
+  --output ".\output_v3_foreground_type" `
   --epochs 50 `
+  --batch_size 8 `
   --base_lr 1e-4 `
-  --gpu 0 `
-  --seed 42
-```
-
-Equivalent bash example:
-
-```bash
-python train_joint_direction.py \
-  --experiment baseline \
-  --sod_path /path/to/SOD/SOD-TrainDataset/DUTS-TR \
-  --cod_path /path/to/COD/TrainDataset \
-  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --output ./output_direction_baseline \
-  --batch_size 8 \
-  --epochs 50 \
-  --base_lr 1e-4 \
-  --gpu 0 \
-  --seed 42
-```
-
-## Inference
-
-Use the shared V3 joint variant for both SOD and COD test sets:
-
-```bash
-python test.py \
-  --variant v3_joint_shared \
-  --path /path/to/TestDataset/CAMO \
-  --checkpoint ./output_direction_baseline/best.pth \
-  --output ./results_direction/baseline/COD/CAMO \
+  --workers 4 `
+  --type_weight 0.5 `
+  --calibration_weight 0.5 `
+  --seed 42 `
   --gpu 0
 ```
 
-The checkpoint metadata should report:
+For USC12K-only training, omit `--sod_path` and `--cod_path` and add:
 
 ```text
-variant = v3_joint_shared
-experiment = baseline
-ablation = no_gate_no_frequency_s4_s3_context
+--usc_root C:\path\to\VOC-USC12K
 ```
 
-## Direction Branch Experiment
-
-This branch adds the target-context affinity attempt on top of the clean
-baseline. The goal is to test whether a small foreground/background feature
-pairing module can learn a continuous saliency-camouflage affinity instead of
-only outputting every separable foreground region.
+The loss is:
 
 ```text
-Training mode: context_affinity
-Inference variant: v3_joint_context_affinity
-Extra loss: BCE(context_affinity_logit, task_id)
-Default affinity weight: 0.05
+L = foreground structure loss
+  + 0.5 * foreground-type cross entropy
+  + 0.5 * three-class calibration loss
 ```
 
-```bash
-python train_joint.py \
-  --mode context_affinity \
-  --sod_path /path/to/SOD/SOD-TrainDataset/DUTS-TR \
-  --cod_path /path/to/COD/TrainDataset \
-  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --output ./output_context_affinity \
-  --batch_size 8 \
-  --epochs 50 \
-  --base_lr 1e-4 \
-  --affinity_loss_weight 0.05 \
-  --gpu 0 \
-  --seed 42
-```
+## Inference on SOD/COD datasets
 
-```bash
-python test.py \
-  --variant v3_joint_context_affinity \
-  --path /path/to/TestDataset/CAMO \
-  --checkpoint ./output_context_affinity/best.pth \
-  --output ./results_context_affinity/COD/CAMO \
+The inference script exports `union`, `sod`, and `cod` probability masks.
+
+```powershell
+python -u .\infer_v3_foreground_type.py `
+  --path "C:\path\to\TestDataset\CAMO" `
+  --checkpoint ".\output_v3_foreground_type\best.pth" `
+  --output ".\results_v3_foreground_type\CAMO" `
+  --device cuda `
   --gpu 0
 ```
 
-## Archived Loss Experiments
+Use `--union_only` when only the task-agnostic foreground mask is needed.
 
-`train_joint_direction.py` also keeps several loss-level hypotheses for
-controlled follow-up experiments. They are not the canonical baseline and are
-archived under `archive/correction-aware-direction`.
+## USC12K evaluation
 
-| Experiment | Extra idea |
-|---|---|
-| `baseline` | final structure loss only |
-| `signed_correction` | supervise Add/Remove direction from detached Master error |
-| `master_protection` | protect reliable Master regions from unnecessary correction |
-| `adaptive_correction` | dynamically weight correction loss by Master correction demand |
-| `signed_protection` | signed correction + Master protection |
-| `full` | signed correction + protection + adaptive weighting |
-
-See `experiment_configs/direction_baseline.md` for the fixed baseline protocol
-and `experiment_configs/archive_notes.md` for archived branch notes.
-
-## Active Branches
+`eval_jointdiff_uscnet_protocol.py` uses USCNet's three-class protocol:
 
 ```text
-main
-  canonical V3 joint baseline and new training protocol
-
-direction
-  target-context affinity attempt for SOD/COD semantic disambiguation
+0 = Background, 1 = SOD, 2 = COD
 ```
 
-Old experiment branches are preserved as tags:
+It reports `PA`, `cPA`, `mPA`, `IoU`, `mIoU`, and `CSCS` and can optionally
+save indexed prediction PNGs.
 
-```text
-archive/joint-component-ablation
-archive/correction-aware-direction
+```powershell
+python -u .\eval_jointdiff_uscnet_protocol.py `
+  --usc_root "C:\path\to\VOC-USC12K" `
+  --checkpoint ".\output_v3_foreground_type\best.pth" `
+  --backbone_checkpoint "C:\path\to\pvt_v2_b2.pth" `
+  --uscnet_root "C:\path\to\USCNet" `
+  --split val `
+  --image_size 352 `
+  --output ".\uscnet_protocol_jointdiff.json" `
+  --gpu 0
 ```
+
+## Requirements
+
+Install the packages listed in `requirements.txt`. The model uses PyTorch,
+torchvision, timm, Pillow, NumPy, and tqdm.
+
+Training checkpoints and generated results are ignored by Git.
