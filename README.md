@@ -1,21 +1,60 @@
 # JointDiff
 
-JointDiff is the V3 foreground-type allocation model for joint salient object
-detection (SOD) and camouflaged object detection (COD).
+JointDiff 是一个联合显著目标检测（SOD）与伪装目标检测（COD）的像素级分割模型。当前 GitHub 版本以你原来的 V3 为前景发现主干，在统一前景 mask 后增加 SOD/COD 类型分配模块，用于回答：
 
-## Model
+> 这里是不是前景？如果是，它属于 SOD 还是 COD？
 
-```text
-PVT-v2-B2 ImageNet-1K backbone
-  + Master Decoder
-  + blurred soft-erasure residual evidence
-  + S4/S3 context-only refinement
-  + S2/S1 Add/Remove refinement
-  + foreground-type allocation head
+## 当前模型
+
+当前模型为 `V3ForegroundTypeAllocationNet`，核心结构如下：
+
+当前 GitHub 默认分支：`feature/v3-foreground-type-allocation`
+
+```mermaid
+flowchart TD
+    I["输入图像"] --> B["PVT-v2-B2 Backbone"]
+    B --> F["多尺度特征"]
+    F --> V3["V3 共享前景路径"]
+    V3 --> M["Master Decoder"]
+    M --> E["Erase / Residual Evidence"]
+    E --> C["S4/S3 Context Refinement"]
+    C --> R["S2/S1 Add-Remove Refinement"]
+    R --> U["统一前景 logit"]
+    U --> PF["P(foreground)"]
+
+    V3 --> S["V3 Semantic Feature"]
+    PF --> P1["前景区域池化"]
+    PF --> P2["背景区域池化"]
+    S --> P1
+    S --> P2
+    P1 --> Q["语义关系 + 双 Query"]
+    P2 --> Q
+    Q --> T["P(SOD|foreground), P(COD|foreground)"]
+
+    PF --> O["三分类概率组合"]
+    T --> O
+    O --> Y["Background / SOD / COD"]
 ```
 
-The model first predicts a task-agnostic foreground mask, then assigns each
-foreground pixel to SOD or COD:
+V3 的共享路径仍负责发现所有前景；新增的 allocation head 只负责在前景内部进行类型分配。模型不使用整图 task classifier，因此一张图中可以同时存在 SOD 与 COD（USC12K Scene-C）。
+
+## 与原始 V3 的区别
+
+| 项目 | 原始 V3 | 当前模型 |
+|---|---|---|
+| 主干 | PVT-v2-B2 + V3 | 相同 |
+| 前景路径 | Master、Erase、Residual、S4/S3、S2/S1 refinement | 保留 |
+| 输出 | `P(foreground)` | `P(foreground)` + SOD/COD 类型分配 |
+| 类型判断 | 无 | 语义特征 + foreground/background pooling + 双 query |
+| 混合场景 | 只能输出统一前景 | 可逐像素区分 SOD 与 COD |
+| 训练标签 | 二值前景 | `0=background, 1=SOD, 2=COD` |
+| 训练损失 | 前景结构损失 | 前景结构损失 + 类型交叉熵 + 三分类校准损失 |
+
+当前模型不是重新替换 V3，而是把 V3 的强前景能力作为第一阶段，再学习前景类型分配。
+
+## 概率定义
+
+模型预测：
 
 ```text
 P(foreground)
@@ -23,95 +62,110 @@ P(SOD | foreground)
 P(COD | foreground)
 ```
 
-The final probabilities are:
+最终三分类概率为：
 
 ```text
-background = 1 - P(foreground)
-SOD        = P(foreground) * P(SOD | foreground)
-COD        = P(foreground) * P(COD | foreground)
+P(background) = 1 - P(foreground)
+P(SOD)        = P(foreground) × P(SOD | foreground)
+P(COD)        = P(foreground) × P(COD | foreground)
 ```
 
-The canonical model is `V3ForegroundTypeAllocationNet` with variant
-`v3_foreground_type_allocation`.
+这种 factorized 形式保证 SOD/COD 预测受统一前景支持约束，不会完全脱离 V3 mask 独立产生前景。
 
-## Training
+## 训练目标
 
-The canonical joint run balances SOD and COD samples and optionally adds
-USC12K pixel-labelled samples. It starts from the ImageNet-1K PVT-v2-B2
-checkpoint and trains the complete network end to end.
+当前训练入口为 `train_v3_foreground_type.py`。默认目标函数：
 
-```powershell
-conda activate JointSCOD
-python -u .\train_v3_foreground_type.py `
-  --sod_path "C:\path\to\SOD-TrainDataset\DUTS-TR" `
-  --cod_path "C:\path\to\COD\TrainDataset" `
-  --backbone_checkpoint "C:\path\to\pvt_v2_b2.pth" `
-  --output ".\output_v3_foreground_type" `
-  --epochs 50 `
-  --batch_size 8 `
-  --base_lr 1e-4 `
-  --workers 4 `
-  --type_weight 0.5 `
-  --calibration_weight 0.5 `
-  --seed 42 `
+```text
+L = L_foreground + 0.5 × L_type + 0.5 × L_calibration
+```
+
+- `L_foreground`：V3 union mask 的 `structure_loss`；
+- `L_type`：有效前景像素上的 SOD/COD 类型交叉熵；
+- `L_calibration`：Background/SOD/COD 三分类负对数似然。
+
+普通 SOD 数据的前景标为 1，普通 COD 数据的前景标为 2；USC12K 直接使用像素级三分类标签。训练默认从 ImageNet-1K 预训练的 PVT-v2-B2 开始，并端到端优化全部参数。
+
+## USC12K 场景
+
+```text
+Scene-A：SOD-only
+Scene-B：COD-only
+Scene-C：SOD 与 COD 可同时出现
+Scene-D：background-only
+```
+
+Scene-C 是区分模型是否真正学会 SOD/COD 分配的关键场景；推理时不输入 scene name 或 task flag。
+
+## USC12K-only 训练
+
+```bash
+python -u train_v3_foreground_type.py \
+  --usc_root /path/to/VOC-USC12K \
+  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
+  --output ./output_v3_foreground_type_usc_only \
+  --epochs 50 \
+  --batch_size 8 \
+  --base_lr 1e-4 \
+  --workers 4 \
+  --type_weight 0.5 \
+  --calibration_weight 0.5 \
+  --seed 42 \
   --gpu 0
 ```
 
-For USC12K-only training, omit `--sod_path` and `--cod_path` and add:
+混合 SOD/COD 数据训练时，同时提供 `--sod_path` 和 `--cod_path`；USC12K 作为可选的像素标签数据源加入。
 
-```text
---usc_root C:\path\to\VOC-USC12K
-```
+## 推理与评估
 
-The loss is:
+普通 SOD/COD 数据集推理：
 
-```text
-L = foreground structure loss
-  + 0.5 * foreground-type cross entropy
-  + 0.5 * three-class calibration loss
-```
-
-## Inference on SOD/COD datasets
-
-The inference script exports `union`, `sod`, and `cod` probability masks.
-
-```powershell
-python -u .\infer_v3_foreground_type.py `
-  --path "C:\path\to\TestDataset\CAMO" `
-  --checkpoint ".\output_v3_foreground_type\best.pth" `
-  --output ".\results_v3_foreground_type\CAMO" `
-  --device cuda `
+```bash
+python -u infer_v3_foreground_type.py \
+  --path /path/to/TestDataset/CAMO \
+  --checkpoint ./output_v3_foreground_type/best.pth \
+  --output ./results_v3_foreground_type/CAMO \
+  --device cuda \
   --gpu 0
 ```
 
-Use `--union_only` when only the task-agnostic foreground mask is needed.
+USC12K 三分类协议评估：
 
-## USC12K evaluation
-
-`eval_jointdiff_uscnet_protocol.py` uses USCNet's three-class protocol:
-
-```text
-0 = Background, 1 = SOD, 2 = COD
-```
-
-It reports `PA`, `cPA`, `mPA`, `IoU`, `mIoU`, and `CSCS` and can optionally
-save indexed prediction PNGs.
-
-```powershell
-python -u .\eval_jointdiff_uscnet_protocol.py `
-  --usc_root "C:\path\to\VOC-USC12K" `
-  --checkpoint ".\output_v3_foreground_type\best.pth" `
-  --backbone_checkpoint "C:\path\to\pvt_v2_b2.pth" `
-  --uscnet_root "C:\path\to\USCNet" `
-  --split val `
-  --image_size 352 `
-  --output ".\uscnet_protocol_jointdiff.json" `
+```bash
+python -u eval_jointdiff_uscnet_protocol.py \
+  --usc_root /path/to/VOC-USC12K \
+  --checkpoint ./output_v3_foreground_type/best.pth \
+  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
+  --split val.txt \
+  --output ./usc12k_metrics.json \
   --gpu 0
 ```
 
-## Requirements
+评估时区分两类指标：
 
-Install the packages listed in `requirements.txt`. The model uses PyTorch,
-torchvision, timm, Pillow, NumPy, and tqdm.
+- 常规 SOD/COD：S-measure、F-measure、E-measure、MAE；
+- USC12K 三分类：`IoU-S`、`IoU-C`、`FG-mIoU`、`mIoU`、`CSCS` 以及混淆矩阵。
 
-Training checkpoints and generated results are ignored by Git.
+## 代码结构
+
+```text
+models/frequency_adaptive_refinement_net.py  V3 主干与 refinement
+models/foreground_type_allocation.py         前景类型分配模型
+dataset_semantic.py                          SOD/COD/USC12K 统一数据集
+train_v3_foreground_type.py                  训练入口
+infer_v3_foreground_type.py                  普通数据集推理
+eval_jointdiff_uscnet_protocol.py            USC12K 三分类协议
+eval_v3_foreground_type_usc.py               USC12K 前景与类型评估
+```
+
+## 研究定位
+
+原始 V3 主要学习 objectness 和 figure-ground separation，擅长找出“可分割的前景”。当前模型进一步利用语义上下文，把前景分解为 SOD 与 COD，目标是减少联合模型在 USC12K 混合场景中的任务混淆，同时尽量保留 V3 的统一前景能力。
+
+## 环境
+
+```bash
+pip install -r requirements.txt
+```
+
+训练权重和生成结果默认由 Git 忽略，不纳入版本库。
