@@ -54,6 +54,12 @@ def main():
             image = batch["image"].to(device); foreground = batch["foreground"].to(device)
             target = batch["semantic"].to(device); output = model(image)
             loss_fg = structure_loss(output["union"], foreground)
+            sod_target = (target == 1).float().unsqueeze(1)
+            cod_target = (target == 2).float().unsqueeze(1)
+            loss_allocation = (
+                structure_loss(output["sod"], sod_target)
+                + structure_loss(output["cod"], cod_target)
+            )
             valid = batch["semantic_valid"].to(device)
             type_target = (target == 2).long()
             if bool(valid.any()):
@@ -62,21 +68,19 @@ def main():
                 loss_type = loss_fg.new_zeros(())
             probability = output["three_class_probability"].clamp_min(1e-6)
             loss_cal = F.nll_loss(probability.log().permute(0, 2, 3, 1).reshape(-1, 3), target.reshape(-1))
-            # A1/A2 already need type supervision to make the allocation head
-            # measurable; A4 isolates the explicit type-loss contribution
-            # after correction is enabled.
-            type_weight = args.type_weight if args.ablation in {"A1", "A2", "A4", "A5"} else 0.0
+            allocation_weight = 1.0 if args.ablation != "A0" else 0.0
+            type_weight = args.type_weight if args.ablation in {"A4", "A5"} else 0.0
             calibration_weight = args.calibration_weight if args.ablation == "A5" else 0.0
-            loss = loss_fg + type_weight * loss_type + calibration_weight * loss_cal
+            loss = loss_fg + allocation_weight * loss_allocation + type_weight * loss_type + calibration_weight * loss_cal
             optimizer.zero_grad(set_to_none=True); loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 5.0); optimizer.step()
             total += float(loss.detach())
         scheduler.step(); value = total / max(len(loader), 1)
-        state = {"epoch": epoch + 1, "model_state": model.state_dict(), "variant": f"v3_foreground_type_allocation_{args.ablation}", "ablation": args.ablation, "image_size": args.image_size, "type_weight": type_weight, "calibration_weight": calibration_weight, "best_loss": min(best, value)}
+        state = {"epoch": epoch + 1, "model_state": model.state_dict(), "variant": f"v3_foreground_type_allocation_{args.ablation}", "ablation": args.ablation, "image_size": args.image_size, "allocation_weight": allocation_weight, "type_weight": type_weight, "calibration_weight": calibration_weight, "best_loss": min(best, value)}
         torch.save(state, os.path.join(args.output, "latest.pth"))
         if value < best:
             best = value; state["best_loss"] = best; torch.save(state, os.path.join(args.output, "best.pth"))
-        print(f"epoch={epoch + 1:03d} loss={value:.5f} fg={float(loss_fg):.5f} type={float(loss_type):.5f} cal={float(loss_cal):.5f}", flush=True)
+        print(f"epoch={epoch + 1:03d} loss={value:.5f} fg={float(loss_fg):.5f} allocation={float(loss_allocation):.5f} type={float(loss_type):.5f} cal={float(loss_cal):.5f}", flush=True)
 
 
 if __name__ == "__main__":

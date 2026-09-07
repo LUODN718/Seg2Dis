@@ -141,7 +141,7 @@ python -u train_v3_foreground_type.py \
   --seed 42 --gpu 0
 ```
 
-为了让 A1/A2 的类型分配头获得可学习信号，训练实现从 A1 开始启用 `L_type`；A3 验证 correction 的结构增益，A4 显式固定加入类型损失，A5 再加入 calibration。每个 checkpoint 会保存 `ablation` 和 `image_size` 元数据。
+从 A1 开始使用 `L_SOD + L_COD` 两个 mask 结构损失训练基础 allocation；A4 再加入仅作用于前景像素的显式类型交叉熵 `L_type`，A5 最后加入三分类 calibration。这样 A1 的分配头具备有效监督，同时 A4 仍能独立验证显式类型监督的贡献。每个 checkpoint 会保存 `ablation`、`image_size` 和各项损失权重元数据。
 
 混合 SOD/COD 数据训练时，同时提供 `--sod_path` 和 `--cod_path`；USC12K 作为可选的像素标签数据源加入。
 
