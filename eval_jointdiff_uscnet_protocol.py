@@ -112,6 +112,7 @@ def main():
         help="Only export predictions; skip importing USCNet metric dependencies",
     )
     parser.add_argument("--gpu", type=int, default=0)
+    parser.add_argument("--ablation", choices=[f"A{i}" for i in range(6)], default="A5")
     args = parser.parse_args()
 
     if not args.inference_only:
@@ -124,7 +125,7 @@ def main():
     device = torch.device(f"cuda:{args.gpu}")
     state = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     state = state.get("model_state", state.get("state_dict", state))
-    model = V3ForegroundTypeAllocationNet(args.backbone_checkpoint).to(device)
+    model = V3ForegroundTypeAllocationNet(args.backbone_checkpoint, ablation=args.ablation).to(device)
     model.load_state_dict(state, strict=True)
     model.eval()
 

@@ -114,6 +114,35 @@ python -u train_v3_foreground_type.py \
   --gpu 0
 ```
 
+## USC12K 352×352 消融实验
+
+消融分支使用同一个训练入口，通过 `--ablation` 切换配置，避免不同脚本造成协议差异。所有实验固定 USC12K-only、352×352、PVT-v2-B2、seed=42；建议每个配置使用独立的 `--output` 目录。
+
+| 编号 | 配置 | 验证内容 |
+|---|---|---|
+| A0 | 原始 V3 union-only | 纯前景分割基线 |
+| A1 | V3 + 基础 type allocation，无 pooling/correction/calibration | 类型分配头本身 |
+| A2 | A1 + foreground/background pooling + dynamic query | 池化与上下文 query |
+| A3 | A2 + uncertainty/boundary correction | correction 模块 |
+| A4 | A3 + type loss | 显式类型监督 |
+| A5 | A4 + calibration loss | 完整模型与三分类校准 |
+
+运行示例：
+
+```bash
+python -u train_v3_foreground_type.py \
+  --usc_root /path/to/VOC-USC12K \
+  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
+  --output ./ablation_A2_352 \
+  --ablation A2 \
+  --image_size 352 \
+  --epochs 50 --batch_size 8 --base_lr 1e-4 \
+  --type_weight 0.5 --calibration_weight 0.5 \
+  --seed 42 --gpu 0
+```
+
+为了让 A1/A2 的类型分配头获得可学习信号，训练实现从 A1 开始启用 `L_type`；A3 验证 correction 的结构增益，A4 显式固定加入类型损失，A5 再加入 calibration。每个 checkpoint 会保存 `ablation` 和 `image_size` 元数据。
+
 混合 SOD/COD 数据训练时，同时提供 `--sod_path` 和 `--cod_path`；USC12K 作为可选的像素标签数据源加入。
 
 ## 推理与评估
