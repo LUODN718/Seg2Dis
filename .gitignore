@@ -2,14 +2,20 @@ __pycache__/
 *.py[cod]
 .DS_Store
 .idea/
+.vscode/
+.pytest_cache/
 
 *.pth
 *.pt
 *.ckpt
-output/
+*.log
+data/
+datasets/
+checkpoints/
+outputs/
 results/
+predictions/
 visualizations/
 output_*/
 results_*/
-
-visualize_dgf_best_subtraction.py
+USC12K_val_predictions/

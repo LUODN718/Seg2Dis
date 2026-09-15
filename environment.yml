@@ -1,0 +1,16 @@
+name: segdis
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+dependencies:
+  - python=3.10.20
+  - pytorch=2.5.1
+  - torchvision=0.20.1
+  - pytorch-cuda=12.1
+  - numpy=2.0.1
+  - pillow=11.1.0
+  - pip
+  - pip:
+      - timm==1.0.28
+      - tqdm>=4.66,<5

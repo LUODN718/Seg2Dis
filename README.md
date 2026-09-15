@@ -1,200 +1,193 @@
-# JointDiff
+# SegDis: Segment First, Then Discriminate
 
-JointDiff 是一个联合显著目标检测（SOD）与伪装目标检测（COD）的像素级分割模型。当前 GitHub 版本以你原来的 V3 为前景发现主干，在统一前景 mask 后增加 SOD/COD 类型分配模块，用于回答：
+Official implementation of **SegDis**, a unified model for salient object detection (SOD) and camouflaged object detection (COD). SegDis first discovers a type-agnostic foreground and then assigns SOD/COD labels inside that foreground at pixel level. This formulation supports images in which salient and camouflaged objects coexist.
 
-> 这里是不是前景？如果是，它属于 SOD 还是 COD？
+![SegDis overview](assets/teaser.png)
 
-## 当前模型
+## Method
 
-当前模型为 `V3ForegroundTypeAllocationNet`，核心结构如下：
+SegDis contains two stages:
 
-当前 GitHub 默认分支：`feature/v3-foreground-type-allocation`
+1. **Progressive Foreground Refinement System (PFRS).** A PVT-v2-B2 encoder, Master Decoder, erase evidence, residual pyramid, and four refinement blocks produce a unified foreground probability.
+2. **Foreground type allocation.** Foreground/background pooled semantics condition two queries. The queries estimate `P(SOD | FG)` and `P(COD | FG)`, followed by uncertainty-boundary correction and foreground-constrained probability composition.
 
-```mermaid
-flowchart TD
-    I["输入图像"] --> B["PVT-v2-B2 Backbone"]
-    B --> F["多尺度特征"]
-    F --> V3["V3 共享前景路径"]
-    V3 --> M["Master Decoder"]
-    M --> E["Erase / Residual Evidence"]
-    E --> C["S4/S3 Context Refinement"]
-    C --> R["S2/S1 Add-Remove Refinement"]
-    R --> U["统一前景 logit"]
-    U --> PF["P(foreground)"]
-
-    V3 --> S["V3 Semantic Feature"]
-    PF --> P1["前景区域池化"]
-    PF --> P2["背景区域池化"]
-    S --> P1
-    S --> P2
-    P1 --> Q["语义关系 + 双 Query"]
-    P2 --> Q
-    Q --> T["P(SOD|foreground), P(COD|foreground)"]
-
-    PF --> O["三分类概率组合"]
-    T --> O
-    O --> Y["Background / SOD / COD"]
-```
-
-V3 的共享路径仍负责发现所有前景；新增的 allocation head 只负责在前景内部进行类型分配。模型不使用整图 task classifier，因此一张图中可以同时存在 SOD 与 COD（USC12K Scene-C）。
-
-## 与原始 V3 的区别
-
-| 项目 | 原始 V3 | 当前模型 |
-|---|---|---|
-| 主干 | PVT-v2-B2 + V3 | 相同 |
-| 前景路径 | Master、Erase、Residual、S4/S3、S2/S1 refinement | 保留 |
-| 输出 | `P(foreground)` | `P(foreground)` + SOD/COD 类型分配 |
-| 类型判断 | 无 | 语义特征 + foreground/background pooling + 双 query |
-| 混合场景 | 只能输出统一前景 | 可逐像素区分 SOD 与 COD |
-| 训练标签 | 二值前景 | `0=background, 1=SOD, 2=COD` |
-| 训练损失 | 前景结构损失 | 前景结构损失 + 类型交叉熵 + 三分类校准损失 |
-
-当前模型不是重新替换 V3，而是把 V3 的强前景能力作为第一阶段，再学习前景类型分配。
-
-## 概率定义
-
-模型预测：
+The final probabilities are factorized as
 
 ```text
-P(foreground)
-P(SOD | foreground)
-P(COD | foreground)
+P(BG)  = 1 - P(FG)
+P(SOD) = P(FG) * P(SOD | FG)
+P(COD) = P(FG) * P(COD | FG)
 ```
 
-最终三分类概率为：
+![SegDis framework](assets/framework.png)
 
-```text
-P(background) = 1 - P(foreground)
-P(SOD)        = P(foreground) × P(SOD | foreground)
-P(COD)        = P(foreground) × P(COD | foreground)
-```
+<p align="center">
+  <img src="assets/pfrs.png" alt="PFRS architecture" width="74%">
+</p>
 
-这种 factorized 形式保证 SOD/COD 预测受统一前景支持约束，不会完全脱离 V3 mask 独立产生前景。
+The Master Decoder used to initialize the progressive refinement path is illustrated in [`assets/master_decoder.png`](assets/master_decoder.png).
 
-## 训练目标
+## Results
 
-当前训练入口为 `train_v3_foreground_type.py`。默认目标函数：
+USC12K validation results at `352 x 352` input resolution:
 
-```text
-L = L_foreground + 0.5 × L_type + 0.5 × L_calibration
-```
+| Method | FG-mIoU | mIoU | IoU-S | IoU-C | CSCS (lower is better) |
+|---|---:|---:|---:|---:|---:|
+| USCNet | 68.455 | 78.030 | - | - | 7.490 |
+| **SegDis** | **74.325** | **82.258** | **82.530** | **66.121** | **3.959** |
 
-- `L_foreground`：V3 union mask 的 `structure_loss`；
-- `L_type`：有效前景像素上的 SOD/COD 类型交叉熵；
-- `L_calibration`：Background/SOD/COD 三分类负对数似然。
+On mixed Scene-C images, SegDis obtains `82.541` IoU-S and `62.959` IoU-C, improving over USCNet by `7.741` and `17.229` percentage points, respectively.
 
-普通 SOD 数据的前景标为 1，普通 COD 数据的前景标为 2；USC12K 直接使用像素级三分类标签。训练默认从 ImageNet-1K 预训练的 PVT-v2-B2 开始，并端到端优化全部参数。
+![Qualitative USC12K predictions](assets/qualitative.png)
 
-## USC12K 场景
+## Installation
 
-```text
-Scene-A：SOD-only
-Scene-B：COD-only
-Scene-C：SOD 与 COD 可同时出现
-Scene-D：background-only
-```
-
-Scene-C 是区分模型是否真正学会 SOD/COD 分配的关键场景；推理时不输入 scene name 或 task flag。
-
-## USC12K-only 训练
+The reported experiments used Windows, Python 3.10.20, PyTorch 2.5.1, CUDA 12.1, torchvision 0.20.1, timm 1.0.28, NumPy 2.0.1, and Pillow 11.1.0.
 
 ```bash
-python -u train_v3_foreground_type.py \
+conda env create -f environment.yml
+conda activate segdis
+```
+
+Alternatively, install `requirements.txt` in an existing CUDA-enabled environment. Match the PyTorch wheel to the CUDA runtime on your machine.
+
+## Data
+
+Download USC12K using the instructions in the [USCNet repository](https://github.com/ssecv/USCNet). The expected layout is:
+
+```text
+VOC-USC12K/
+├── JPEGImages/
+├── SegmentationClass/
+└── ImageSets/
+    └── Segmentation/
+        ├── train.txt
+        ├── val.txt
+        ├── Scene-A.txt
+        ├── Scene-B.txt
+        ├── Scene-C.txt
+        └── Scene-D.txt
+```
+
+Labels use `0 = background`, `1 = SOD`, and `2 = COD`. Palette masks with black, red, and green class colors are converted automatically.
+
+Download an ImageNet-1K pretrained PVT-v2-B2 checkpoint and provide its path through `--backbone_checkpoint`. Dataset files, pretrained weights, trained checkpoints, and predictions are intentionally excluded from Git.
+
+## Training
+
+Train the complete SegDis model from the PVT-v2-B2 initialization:
+
+```bash
+python -u train.py \
   --usc_root /path/to/VOC-USC12K \
   --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --output ./output_v3_foreground_type_usc_only \
+  --output ./outputs/segdis_b4 \
+  --variant B4 \
   --epochs 50 \
   --batch_size 8 \
   --base_lr 1e-4 \
-  --workers 4 \
+  --image_size 352 \
   --type_weight 0.5 \
   --calibration_weight 0.5 \
+  --workers 4 \
   --seed 42 \
   --gpu 0
 ```
 
-## USC12K 352×352 消融实验
+On Windows, the equivalent parameterized launcher is:
 
-消融分支使用同一个训练入口，通过 `--ablation` 切换配置，避免不同脚本造成协议差异。所有实验固定 USC12K-only、352×352、PVT-v2-B2、seed=42；建议每个配置使用独立的 `--output` 目录。
+```powershell
+.\scripts\train_segdis.ps1 `
+  -UscRoot "C:\path\to\VOC-USC12K" `
+  -BackboneCheckpoint "C:\path\to\pvt_v2_b2.pth"
+```
 
-| 编号 | 配置 | 验证内容 |
+Training is end to end. `best.pth` is selected by the lowest epoch-average training objective, matching the reported protocol; `latest.pth` also stores optimizer and scheduler state for `--resume`.
+
+## Evaluation
+
+Evaluate the complete validation set:
+
+```bash
+python -u evaluate.py \
+  --usc_root /path/to/VOC-USC12K \
+  --checkpoint ./outputs/segdis_b4/best.pth \
+  --split val \
+  --output ./results/segdis_b4/val.json \
+  --gpu 0
+```
+
+The evaluator is self-contained and reports the confusion matrix, pixel accuracy, class IoU, mIoU, foreground mIoU, and the USCNet-compatible Camouflage-Saliency Confusion Score (CSCS). It does not require a separate USCNet checkout or OpenCV installation. The PowerShell launcher evaluates `Scene-A` through `Scene-D` and `val`:
+
+```powershell
+.\scripts\evaluate_usc12k.ps1 `
+  -UscRoot "C:\path\to\VOC-USC12K" `
+  -Checkpoint ".\outputs\segdis_b4\best.pth"
+```
+
+## Inference
+
+Export class-index PNG files at the original image resolution:
+
+```bash
+python -u infer.py \
+  --usc_root /path/to/VOC-USC12K \
+  --checkpoint ./outputs/segdis_b4/best.pth \
+  --split Scene-C \
+  --output ./predictions/segdis_b4/Scene-C \
+  --format label \
+  --gpu 0
+```
+
+`--format` accepts `label`, `color`, `separate`, or `all`. Color predictions use red for SOD and green for COD. The Windows launcher runs all four scenes:
+
+```powershell
+.\scripts\infer_usc12k.ps1 `
+  -UscRoot "C:\path\to\VOC-USC12K" `
+  -Checkpoint ".\outputs\segdis_b4\best.pth" `
+  -Format all
+```
+
+## Ablation Study
+
+All variants use the same PVT-v2-B2 backbone, PFRS foreground path, USC12K split, `352 x 352` input, optimizer, schedule, and random seed.
+
+| Variant | Type discrimination design | Objective |
 |---|---|---|
-| A0 | 原始 V3 union-only | 纯前景分割基线 |
-| A1 | V3 + 基础 type allocation，无 pooling/correction/calibration | 类型分配头本身 |
-| A2 | A1 + foreground/background pooling + dynamic query | 池化与上下文 query |
-| A3 | A2 + uncertainty/boundary correction | correction 模块 |
-| A4 | A3 + type loss | 显式类型监督 |
-| A5 | A4 + calibration loss | 完整模型与三分类校准 |
+| B0 | Independent two-channel SOD/COD output | `L_fg + L_SOD + L_COD` |
+| B1 | Foreground allocation with static dual queries | `L_fg + 0.5 L_type` |
+| B2 | B1 + foreground/background pooling and dynamic queries | `L_fg + 0.5 L_type` |
+| B3 | B2 + type-aware uncertainty-boundary correction | `L_fg + 0.5 L_type` |
+| B4 | B3 + foreground-constrained calibration | `L_fg + 0.5 L_type + 0.5 L_cal` |
 
-运行示例：
+Run the full B0-B4 training and evaluation sequence on Windows:
 
-```bash
-python -u train_v3_foreground_type.py \
-  --usc_root /path/to/VOC-USC12K \
-  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --output ./ablation_A2_352 \
-  --ablation A2 \
-  --image_size 352 \
-  --epochs 50 --batch_size 8 --base_lr 1e-4 \
-  --type_weight 0.5 --calibration_weight 0.5 \
-  --seed 42 --gpu 0
+```powershell
+.\scripts\run_ablation.ps1 `
+  -UscRoot "C:\path\to\VOC-USC12K" `
+  -BackboneCheckpoint "C:\path\to\pvt_v2_b2.pth"
 ```
 
-从 A1 开始使用 `L_SOD + L_COD` 两个 mask 结构损失训练基础 allocation；A4 再加入仅作用于前景像素的显式类型交叉熵 `L_type`，A5 最后加入三分类 calibration。这样 A1 的分配头具备有效监督，同时 A4 仍能独立验证显式类型监督的贡献。每个 checkpoint 会保存 `ablation`、`image_size` 和各项损失权重元数据。
-
-混合 SOD/COD 数据训练时，同时提供 `--sod_path` 和 `--cod_path`；USC12K 作为可选的像素标签数据源加入。
-
-## 推理与评估
-
-普通 SOD/COD 数据集推理：
-
-```bash
-python -u infer_v3_foreground_type.py \
-  --path /path/to/TestDataset/CAMO \
-  --checkpoint ./output_v3_foreground_type/best.pth \
-  --output ./results_v3_foreground_type/CAMO \
-  --device cuda \
-  --gpu 0
-```
-
-USC12K 三分类协议评估：
-
-```bash
-python -u eval_jointdiff_uscnet_protocol.py \
-  --usc_root /path/to/VOC-USC12K \
-  --checkpoint ./output_v3_foreground_type/best.pth \
-  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --split val.txt \
-  --output ./usc12k_metrics.json \
-  --gpu 0
-```
-
-评估时区分两类指标：
-
-- 常规 SOD/COD：S-measure、F-measure、E-measure、MAE；
-- USC12K 三分类：`IoU-S`、`IoU-C`、`FG-mIoU`、`mIoU`、`CSCS` 以及混淆矩阵。
-
-## 代码结构
+## Repository Layout
 
 ```text
-models/frequency_adaptive_refinement_net.py  V3 主干与 refinement
-models/foreground_type_allocation.py         前景类型分配模型
-dataset_semantic.py                          SOD/COD/USC12K 统一数据集
-train_v3_foreground_type.py                  训练入口
-infer_v3_foreground_type.py                  普通数据集推理
-eval_jointdiff_uscnet_protocol.py            USC12K 三分类协议
-eval_v3_foreground_type_usc.py               USC12K 前景与类型评估
+assets/                         Paper figures
+models/frequency_adaptive_refinement_net.py
+                                PFRS implementation
+models/foreground_type_allocation.py
+                                B1-B4 foreground type allocation
+models/two_channel_v3.py        B0 direct two-channel baseline
+dataset_usc12k.py               USC12K loader and label conversion
+train.py                        Unified B0-B4 training entry point
+infer.py                        Original-resolution prediction export
+evaluate.py                     Self-contained USC12K evaluation
+scripts/                        Reproducible Windows launchers
 ```
 
-## 研究定位
+## Citation
 
-原始 V3 主要学习 objectness 和 figure-ground separation，擅长找出“可分割的前景”。当前模型进一步利用语义上下文，把前景分解为 SOD 与 COD，目标是减少联合模型在 USC12K 混合场景中的任务混淆，同时尽量保留 V3 的统一前景能力。
+Citation information and pretrained checkpoints will be added with the public paper release.
 
-## 环境
+## Acknowledgements
 
-```bash
-pip install -r requirements.txt
-```
-
-训练权重和生成结果默认由 Git 忽略，不纳入版本库。
+The USC12K data organization and the definitions of mIoU and CSCS follow [USCNet](https://github.com/ssecv/USCNet). The encoder is initialized from an ImageNet-pretrained [PVT-v2](https://github.com/whai362/PVT) checkpoint.

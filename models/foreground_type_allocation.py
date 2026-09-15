@@ -10,7 +10,7 @@ from config import CFG
 from .frequency_adaptive_refinement_net import FrequencyAdaptiveRefinementNet
 
 
-class V3ForegroundTypeAllocationNet(nn.Module):
+class SegDis(nn.Module):
     """Keep V3 foreground discovery and factorize foreground into SOD/COD.
 
     The allocator predicts P(type | foreground). A zero-initialized residual
@@ -18,15 +18,14 @@ class V3ForegroundTypeAllocationNet(nn.Module):
     """
 
     def __init__(self, backbone_checkpoint: str | None = None, v3_checkpoint: str | None = None, hidden: int = 96,
-                 correction_limit: float = 0.20, ablation: str = "A5"):
+                 correction_limit: float = 0.20, ablation: str = "B4"):
         super().__init__()
         self.ablation = ablation.upper()
-        if self.ablation not in {f"A{i}" for i in range(6)}:
-            raise ValueError("ablation must be one of A0, A1, A2, A3, A4, A5")
-        self.use_allocation = self.ablation != "A0"
-        self.use_pooling = self.ablation in {"A2", "A3", "A4", "A5"}
-        self.use_correction = self.ablation in {"A3", "A4", "A5"}
-        self.use_calibration = self.ablation == "A5"
+        if self.ablation not in {"B1", "B2", "B3", "B4"}:
+            raise ValueError("allocation ablation must be one of B1, B2, B3, B4")
+        level = int(self.ablation[1:])
+        self.use_pooling = level >= 2
+        self.use_correction = level >= 3
         self.v3 = FrequencyAdaptiveRefinementNet(
             backbone_checkpoint=backbone_checkpoint,
             ablation="no_gate_no_frequency_s4_s3_context",
@@ -97,9 +96,6 @@ class V3ForegroundTypeAllocationNet(nn.Module):
         correction = self.correction(correction_input).tanh() * self.correction_limit
         correction_scope = (0.5 * uncertainty + 0.5 * boundary).detach()
         union_logit = base_logit + correction_scope * correction if self.use_correction else base_logit
-        if not self.use_allocation:
-            type_probability = torch.zeros_like(type_probability)
-            type_probability[:, 0] = 1.0
         union_probability = union_logit.sigmoid()
         sod_probability = union_probability * type_probability[:, 0:1]
         cod_probability = union_probability * type_probability[:, 1:2]
@@ -120,3 +116,7 @@ class V3ForegroundTypeAllocationNet(nn.Module):
             "semantic_relation": relation,
             "semantic_correction": correction,
         }
+
+
+# Backward-compatible name used by checkpoints and earlier experiment scripts.
+V3ForegroundTypeAllocationNet = SegDis

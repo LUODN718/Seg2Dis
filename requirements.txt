@@ -1,5 +1,6 @@
-numpy
-Pillow
-timm
-torch
-torchvision
+numpy==2.0.1
+Pillow==11.1.0
+timm==1.0.28
+torch==2.5.1
+torchvision==0.20.1
+tqdm>=4.66,<5
