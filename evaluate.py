@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from dataset_usc12k import USC12KDataset
-from models import VARIANTS, build_model, checkpoint_variant, three_class_probability
+from models import build_model, three_class_probability, validate_checkpoint
 from utils.metrics import SegmentationMetric
 
 
@@ -21,8 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--usc_root", required=True)
     parser.add_argument("--checkpoint", required=True)
     parser.add_argument("--split", default="val")
-    parser.add_argument("--output", default="./results/segdis_b4_val.json")
-    parser.add_argument("--variant", choices=VARIANTS, default=None)
+    parser.add_argument("--output", default="./results/segdis_val.json")
     parser.add_argument("--image_size", type=int, default=None)
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--workers", type=int, default=4)
@@ -36,9 +35,9 @@ def main() -> None:
         raise RuntimeError("CUDA is required for evaluation")
     device = torch.device(f"cuda:{args.gpu}")
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    variant = checkpoint_variant(checkpoint, args.variant)
+    validate_checkpoint(checkpoint)
     image_size = args.image_size or int(checkpoint.get("image_size", 352))
-    model = build_model(variant).to(device)
+    model = build_model().to(device)
     model.load_state_dict(checkpoint.get("model_state", checkpoint), strict=True)
     model.eval()
 
@@ -48,9 +47,9 @@ def main() -> None:
     )
     metric = SegmentationMetric(3)
     with torch.inference_mode():
-        for batch in tqdm(loader, desc=f"{variant} {args.split}"):
+        for batch in tqdm(loader, desc=f"SegDis {args.split}"):
             output = model(batch["image"].to(device, non_blocking=True))
-            probability = three_class_probability(output, variant)
+            probability = three_class_probability(output)
             if probability.shape[-2:] != batch["semantic"].shape[-2:]:
                 probability = F.interpolate(
                     probability, size=batch["semantic"].shape[-2:], mode="bilinear", align_corners=False
@@ -58,8 +57,8 @@ def main() -> None:
             metric.update(probability.argmax(dim=1), batch["semantic"])
 
     result = {
-        "method": "SegDis" if variant == "B4" else f"SegDis ablation {variant}",
-        "variant": variant,
+        "method": "SegDis",
+        "variant": "B4",
         "split": args.split,
         "images": len(dataset),
         "image_size": image_size,

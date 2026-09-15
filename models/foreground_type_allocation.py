@@ -18,14 +18,8 @@ class SegDis(nn.Module):
     """
 
     def __init__(self, backbone_checkpoint: str | None = None, v3_checkpoint: str | None = None, hidden: int = 96,
-                 correction_limit: float = 0.20, ablation: str = "B4"):
+                 correction_limit: float = 0.20):
         super().__init__()
-        self.ablation = ablation.upper()
-        if self.ablation not in {"B1", "B2", "B3", "B4"}:
-            raise ValueError("allocation ablation must be one of B1, B2, B3, B4")
-        level = int(self.ablation[1:])
-        self.use_pooling = level >= 2
-        self.use_correction = level >= 3
         self.v3 = FrequencyAdaptiveRefinementNet(
             backbone_checkpoint=backbone_checkpoint,
             ablation="no_gate_no_frequency_s4_s3_context",
@@ -81,10 +75,7 @@ class SegDis(nn.Module):
         fg = self._masked_pool(semantic_feature, pfg.detach())
         bg = self._masked_pool(semantic_feature, 1.0 - pfg.detach())
         relation = torch.cat([fg, bg, (fg - bg).abs(), F.cosine_similarity(fg, bg, dim=1, eps=1e-6)[:, None]], 1)
-        if self.use_pooling:
-            conditioned_query = self.query[None] + self.query_condition(relation)[:, None]
-        else:
-            conditioned_query = self.query[None].expand(image.shape[0], -1, -1)
+        conditioned_query = self.query[None] + self.query_condition(relation)[:, None]
         local = self.local_projection(semantic_feature)
         type_logits = torch.einsum("bqc,bchw->bqhw", conditioned_query, local)
         type_logits = type_logits / self.type_temperature.abs().clamp_min(0.25)
@@ -95,7 +86,7 @@ class SegDis(nn.Module):
         correction_input = torch.cat([local, uncertainty, boundary, type_probability[:, 0:1] - type_probability[:, 1:2]], 1)
         correction = self.correction(correction_input).tanh() * self.correction_limit
         correction_scope = (0.5 * uncertainty + 0.5 * boundary).detach()
-        union_logit = base_logit + correction_scope * correction if self.use_correction else base_logit
+        union_logit = base_logit + correction_scope * correction
         union_probability = union_logit.sigmoid()
         sod_probability = union_probability * type_probability[:, 0:1]
         cod_probability = union_probability * type_probability[:, 1:2]

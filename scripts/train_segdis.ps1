@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$UscRoot,
     [Parameter(Mandatory=$true)][string]$BackboneCheckpoint,
-    [string]$Output = ".\outputs\segdis_b4",
+    [string]$Output = ".\outputs\segdis",
     [int]$Gpu = 0
 )
 
@@ -10,7 +10,6 @@ python -u .\train.py `
     --usc_root $UscRoot `
     --backbone_checkpoint $BackboneCheckpoint `
     --output $Output `
-    --variant B4 `
     --epochs 50 `
     --batch_size 8 `
     --base_lr 1e-4 `

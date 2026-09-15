@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$UscRoot,
     [Parameter(Mandatory=$true)][string]$Checkpoint,
-    [string]$OutputRoot = ".\predictions\segdis_b4",
+    [string]$OutputRoot = ".\predictions\segdis",
     [ValidateSet("label", "color", "separate", "all")][string]$Format = "label",
     [int]$Gpu = 0
 )

@@ -81,8 +81,7 @@ Train the complete SegDis model from the PVT-v2-B2 initialization:
 python -u train.py \
   --usc_root /path/to/VOC-USC12K \
   --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --output ./outputs/segdis_b4 \
-  --variant B4 \
+  --output ./outputs/segdis \
   --epochs 50 \
   --batch_size 8 \
   --base_lr 1e-4 \
@@ -111,9 +110,9 @@ Evaluate the complete validation set:
 ```bash
 python -u evaluate.py \
   --usc_root /path/to/VOC-USC12K \
-  --checkpoint ./outputs/segdis_b4/best.pth \
+  --checkpoint ./outputs/segdis/best.pth \
   --split val \
-  --output ./results/segdis_b4/val.json \
+  --output ./results/segdis/val.json \
   --gpu 0
 ```
 
@@ -122,7 +121,7 @@ The evaluator is self-contained and reports the confusion matrix, pixel accuracy
 ```powershell
 .\scripts\evaluate_usc12k.ps1 `
   -UscRoot "C:\path\to\VOC-USC12K" `
-  -Checkpoint ".\outputs\segdis_b4\best.pth"
+  -Checkpoint ".\outputs\segdis\best.pth"
 ```
 
 ## Inference
@@ -132,9 +131,9 @@ Export class-index PNG files at the original image resolution:
 ```bash
 python -u infer.py \
   --usc_root /path/to/VOC-USC12K \
-  --checkpoint ./outputs/segdis_b4/best.pth \
+  --checkpoint ./outputs/segdis/best.pth \
   --split Scene-C \
-  --output ./predictions/segdis_b4/Scene-C \
+  --output ./predictions/segdis/Scene-C \
   --format label \
   --gpu 0
 ```
@@ -144,29 +143,13 @@ python -u infer.py \
 ```powershell
 .\scripts\infer_usc12k.ps1 `
   -UscRoot "C:\path\to\VOC-USC12K" `
-  -Checkpoint ".\outputs\segdis_b4\best.pth" `
+  -Checkpoint ".\outputs\segdis\best.pth" `
   -Format all
 ```
 
 ## Ablation Study
 
-All variants use the same PVT-v2-B2 backbone, PFRS foreground path, USC12K split, `352 x 352` input, optimizer, schedule, and random seed.
-
-| Variant | Type discrimination design | Objective |
-|---|---|---|
-| B0 | Independent two-channel SOD/COD output | `L_fg + L_SOD + L_COD` |
-| B1 | Foreground allocation with static dual queries | `L_fg + 0.5 L_type` |
-| B2 | B1 + foreground/background pooling and dynamic queries | `L_fg + 0.5 L_type` |
-| B3 | B2 + type-aware uncertainty-boundary correction | `L_fg + 0.5 L_type` |
-| B4 | B3 + foreground-constrained calibration | `L_fg + 0.5 L_type + 0.5 L_cal` |
-
-Run the full B0-B4 training and evaluation sequence on Windows:
-
-```powershell
-.\scripts\run_ablation.ps1 `
-  -UscRoot "C:\path\to\VOC-USC12K" `
-  -BackboneCheckpoint "C:\path\to\pvt_v2_b2.pth"
-```
+The exact B0--B4 ablation implementations, objectives, and launcher are maintained separately in the [`paper-ablation`](https://github.com/LUODN718/SegDis/tree/paper-ablation) branch. Keeping them outside `main` prevents experimental switches from obscuring the canonical SegDis pipeline.
 
 ## Repository Layout
 
@@ -175,10 +158,9 @@ assets/                         Paper figures
 models/frequency_adaptive_refinement_net.py
                                 PFRS implementation
 models/foreground_type_allocation.py
-                                B1-B4 foreground type allocation
-models/two_channel_v3.py        B0 direct two-channel baseline
+                                Foreground type allocation
 dataset_usc12k.py               USC12K loader and label conversion
-train.py                        Unified B0-B4 training entry point
+train.py                        Complete SegDis training entry point
 infer.py                        Original-resolution prediction export
 evaluate.py                     Self-contained USC12K evaluation
 scripts/                        Reproducible Windows launchers

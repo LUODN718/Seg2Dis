@@ -1,7 +1,7 @@
 param(
     [Parameter(Mandatory=$true)][string]$UscRoot,
     [Parameter(Mandatory=$true)][string]$Checkpoint,
-    [string]$OutputRoot = ".\results\segdis_b4",
+    [string]$OutputRoot = ".\results\segdis",
     [int]$Gpu = 0
 )
 
