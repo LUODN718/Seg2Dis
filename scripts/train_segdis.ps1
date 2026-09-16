@@ -2,6 +2,7 @@ param(
     [Parameter(Mandatory=$true)][string]$UscRoot,
     [Parameter(Mandatory=$true)][string]$BackboneCheckpoint,
     [string]$Output = ".\outputs\segdis",
+    [ValidateSet("pvt_v2_b2", "pvt_v2_b3")][string]$BackboneName = "pvt_v2_b2",
     [int]$Gpu = 0
 )
 
@@ -9,6 +10,7 @@ $ErrorActionPreference = "Stop"
 python -u .\train.py `
     --usc_root $UscRoot `
     --backbone_checkpoint $BackboneCheckpoint `
+    --backbone_name $BackboneName `
     --output $Output `
     --epochs 50 `
     --batch_size 8 `

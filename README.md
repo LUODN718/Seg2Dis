@@ -126,7 +126,7 @@ The evaluator is self-contained and reports the confusion matrix, pixel accuracy
 
 ## Inference
 
-Export class-index PNG files at the original image resolution:
+Export class-index PNG files at the USCNet-compatible `352 x 352` model-input resolution:
 
 ```bash
 python -u infer.py \
@@ -146,6 +146,29 @@ python -u infer.py \
   -Checkpoint ".\outputs\segdis\best.pth" `
   -Format all
 ```
+
+Use `--original_size` only when predictions at each image's original resolution are needed.
+
+To train the same SegDis model with PVT-v2-B3, use the B3 checkpoint and model name:
+
+```bash
+python -u train.py \
+  --usc_root /path/to/VOC-USC12K \
+  --backbone_checkpoint /path/to/pvt_v2_b3.pth \
+  --backbone_name pvt_v2_b3 \
+  --output ./outputs/segdis_b3 \
+  --epochs 50 \
+  --batch_size 8 \
+  --base_lr 1e-4 \
+  --image_size 352 \
+  --type_weight 0.5 \
+  --calibration_weight 0.5 \
+  --workers 4 \
+  --seed 42 \
+  --gpu 0
+```
+
+The resulting checkpoint records `backbone_name=pvt_v2_b3`; `infer.py` and `evaluate.py` will select B3 automatically from that metadata.
 
 ## Ablation Study
 

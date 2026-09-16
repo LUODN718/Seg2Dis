@@ -20,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("Evaluate SegDis on USC12K")
     parser.add_argument("--usc_root", required=True)
     parser.add_argument("--checkpoint", required=True)
+    parser.add_argument("--backbone_name", default=None, choices=("pvt_v2_b2", "pvt_v2_b3"))
     parser.add_argument("--split", default="val")
     parser.add_argument("--output", default="./results/segdis_val.json")
     parser.add_argument("--image_size", type=int, default=None)
@@ -37,7 +38,8 @@ def main() -> None:
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     validate_checkpoint(checkpoint)
     image_size = args.image_size or int(checkpoint.get("image_size", 352))
-    model = build_model().to(device)
+    backbone_name = args.backbone_name or checkpoint.get("backbone_name", "pvt_v2_b2")
+    model = build_model(backbone_name=backbone_name).to(device)
     model.load_state_dict(checkpoint.get("model_state", checkpoint), strict=True)
     model.eval()
 

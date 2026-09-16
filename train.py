@@ -21,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("Train SegDis on USC12K")
     parser.add_argument("--usc_root", required=True)
     parser.add_argument("--backbone_checkpoint", required=True)
+    parser.add_argument("--backbone_name", default="pvt_v2_b2", choices=("pvt_v2_b2", "pvt_v2_b3"))
     parser.add_argument("--output", default="./outputs/segdis")
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--batch_size", type=int, default=8)
@@ -80,7 +81,7 @@ def main() -> None:
         pin_memory=True,
         generator=torch.Generator().manual_seed(args.seed),
     )
-    model = build_model(args.backbone_checkpoint).to(device)
+    model = build_model(args.backbone_checkpoint, args.backbone_name).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.base_lr, weight_decay=CFG.weight_decay)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=max(args.epochs, 1))
 
@@ -116,6 +117,7 @@ def main() -> None:
             "optimizer_state": optimizer.state_dict(),
             "scheduler_state": scheduler.state_dict(),
             "variant": "B4",
+            "backbone_name": args.backbone_name,
             "image_size": args.image_size,
             "type_weight": args.type_weight,
             "calibration_weight": args.calibration_weight,

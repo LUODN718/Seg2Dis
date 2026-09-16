@@ -7,8 +7,11 @@ import torch
 from .foreground_type_allocation import SegDis
 
 
-def build_model(backbone_checkpoint: str | None = None) -> SegDis:
-    return SegDis(backbone_checkpoint)
+def build_model(
+    backbone_checkpoint: str | None = None,
+    backbone_name: str = "pvt_v2_b2",
+) -> SegDis:
+    return SegDis(backbone_checkpoint, backbone_name=backbone_name)
 
 
 def three_class_probability(output: dict[str, torch.Tensor | object]) -> torch.Tensor:
