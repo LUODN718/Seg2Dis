@@ -116,7 +116,7 @@ python -u evaluate.py \
   --gpu 0
 ```
 
-The evaluator is self-contained and reports the confusion matrix, pixel accuracy, class IoU, mIoU, foreground mIoU, and the USCNet-compatible Camouflage-Saliency Confusion Score (CSCS). It does not require a separate USCNet checkout or OpenCV installation. The PowerShell launcher evaluates `Scene-A` through `Scene-D` and `val`:
+The evaluator implements the main-table USCNet protocol exactly: the image is bilinearly resized to `352x352`, the GT label is nearest-neighbor resized to `352x352`, and the three-class prediction is evaluated directly at that resolution (without restoration to original image size). It reports the confusion matrix, pixel accuracy, IoU-BG/IoU-S/IoU-C, FG-mIoU, mIoU, mAcc, and the USCNet-compatible Camouflage-Saliency Confusion Score (CSCS). It does not require a separate USCNet checkout or OpenCV installation. The PowerShell launcher evaluates `Scene-A` through `Scene-D` and `val`:
 
 ```powershell
 .\scripts\evaluate_usc12k.ps1 `
