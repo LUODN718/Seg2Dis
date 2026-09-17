@@ -1,6 +1,6 @@
 # SegDis: Segment First, Then Discriminate
 
-Official implementation of **SegDis**, a unified model for salient object detection (SOD) and camouflaged object detection (COD). SegDis first discovers a type-agnostic foreground and then assigns SOD/COD labels inside that foreground at pixel level. This formulation supports images in which salient and camouflaged objects coexist.
+Official implementation of **SegDis**, a unified model for salient object detection (SOD) and camouflaged object detection (COD). SegDis first discovers a type-agnostic foreground and then assigns SOD/COD labels inside that foreground at pixel level. It supports both PVT-v2-B2 and PVT-v2-B3 backbones and does not require a scene label or task flag at inference time.
 
 ![SegDis overview](assets/teaser.png)
 
@@ -8,7 +8,7 @@ Official implementation of **SegDis**, a unified model for salient object detect
 
 SegDis contains two stages:
 
-1. **Progressive Foreground Refinement System (PFRS).** A PVT-v2-B2 encoder, Master Decoder, erase evidence, residual pyramid, and four refinement blocks produce a unified foreground probability.
+1. **Progressive Foreground Refinement System (PFRS).** A PVT-v2 encoder, Master Decoder, erase evidence, residual pyramid, and progressive region/boundary refinement produce a unified foreground probability.
 2. **Foreground type allocation.** Foreground/background pooled semantics condition two queries. The queries estimate `P(SOD | FG)` and `P(COD | FG)`, followed by uncertainty-boundary correction and foreground-constrained probability composition.
 
 The final probabilities are factorized as
@@ -29,14 +29,15 @@ The Master Decoder used to initialize the progressive refinement path is illustr
 
 ## Results
 
-USC12K validation results at `352 x 352` input resolution:
+USC12K results under the fixed `352 x 352` USCNet protocol. Images are bilinearly resized to `352 x 352`, labels are nearest-neighbor resized to the same size, and predictions are evaluated directly at that size.
 
-| Method | FG-mIoU | mIoU | IoU-S | IoU-C | CSCS (lower is better) |
-|---|---:|---:|---:|---:|---:|
-| USCNet | 68.455 | 78.030 | - | - | 7.490 |
-| **SegDis** | **74.325** | **82.258** | **82.530** | **66.121** | **3.959** |
+| Method | Backbone | FG-mIoU | mIoU | mAcc | IoU-S | IoU-C | CSCS ↓ |
+|---|---|---:|---:|---:|---:|---:|---:|
+| USCNet | -- | 68.46 | 78.03 | 87.92 | 75.57 | 61.34 | 7.49 |
+| SegDis | PVT-v2-B2 | 71.05 | 79.72 | 85.56 | **78.85** | 63.25 | 3.36 |
+| **SegDis** | **PVT-v2-B3** | **72.14** | **80.46** | **86.00** | 77.85 | **66.43** | **3.07** |
 
-On mixed Scene-C images, SegDis obtains `82.541` IoU-S and `62.959` IoU-C, improving over USCNet by `7.741` and `17.229` percentage points, respectively.
+`FG-mIoU=(IoU-S+IoU-C)/2` equally weights salient and camouflaged foreground. On the mixed Scene-C split, PVT-v2-B3 reaches `70.77` IoU-S and `55.23` IoU-C; PVT-v2-B2 reaches `74.02` and `51.72`, respectively. The lower CSCS indicates fewer SOD/COD type-confusion errors.
 
 ![Qualitative USC12K predictions](assets/qualitative.png)
 
@@ -71,16 +72,17 @@ VOC-USC12K/
 
 Labels use `0 = background`, `1 = SOD`, and `2 = COD`. Palette masks with black, red, and green class colors are converted automatically.
 
-Download an ImageNet-1K pretrained PVT-v2-B2 checkpoint and provide its path through `--backbone_checkpoint`. Dataset files, pretrained weights, trained checkpoints, and predictions are intentionally excluded from Git.
+Download an ImageNet-1K pretrained PVT-v2-B2 or PVT-v2-B3 checkpoint and provide its path through `--backbone_checkpoint` together with the matching `--backbone_name`. Dataset files, pretrained weights, trained checkpoints, and predictions are intentionally excluded from Git.
 
 ## Training
 
-Train the complete SegDis model from the PVT-v2-B2 initialization:
+Train the complete SegDis model. Set `--backbone_name` to match the ImageNet-pretrained checkpoint:
 
 ```bash
 python -u train.py \
   --usc_root /path/to/VOC-USC12K \
   --backbone_checkpoint /path/to/pvt_v2_b2.pth \
+  --backbone_name pvt_v2_b2 \
   --output ./outputs/segdis \
   --epochs 50 \
   --batch_size 8 \
@@ -116,7 +118,7 @@ python -u evaluate.py \
   --gpu 0
 ```
 
-The evaluator implements the main-table USCNet protocol exactly: the image is bilinearly resized to `352x352`, the GT label is nearest-neighbor resized to `352x352`, and the three-class prediction is evaluated directly at that resolution (without restoration to original image size). It reports the confusion matrix, pixel accuracy, IoU-BG/IoU-S/IoU-C, FG-mIoU, mIoU, mAcc, and the USCNet-compatible Camouflage-Saliency Confusion Score (CSCS). It does not require a separate USCNet checkout or OpenCV installation. The PowerShell launcher evaluates `Scene-A` through `Scene-D` and `val`:
+The evaluator implements the main-table USCNet protocol exactly: the image is bilinearly resized to `352x352`, the GT label is nearest-neighbor resized to `352x352`, and the three-class prediction is evaluated directly at that resolution, without restoration to original image size. It is intentionally fixed to `352` so results are comparable with the table above. The JSON contains the confusion matrix and `uscnet_metrics_percent` with `IoU-BG`, `IoU-S`, `IoU-C`, `FG-mIoU`, `mIoU`, `mAcc`, `pixelAcc`, and `CSCS`. It does not require a separate USCNet checkout or OpenCV installation. The PowerShell launcher evaluates `Scene-A` through `Scene-D` and `val`:
 
 ```powershell
 .\scripts\evaluate_usc12k.ps1 `
@@ -170,9 +172,9 @@ python -u train.py \
 
 The resulting checkpoint records `backbone_name=pvt_v2_b3`; `infer.py` and `evaluate.py` will select B3 automatically from that metadata.
 
-## Ablation Study
+## Reproducibility scope
 
-Paper-specific B0--B4 ablation implementations are intentionally excluded from the release branch so that `main` remains the canonical training, inference, and evaluation pipeline.
+`main` contains only the canonical SegDis training, inference, and fixed-protocol evaluation pipeline. Paper-specific experimental switches and ablation implementations are intentionally not part of this release branch.
 
 ## Repository Layout
 
@@ -184,8 +186,8 @@ models/foreground_type_allocation.py
                                 Foreground type allocation
 dataset_usc12k.py               USC12K loader and label conversion
 train.py                        Complete SegDis training entry point
-infer.py                        Original-resolution prediction export
-evaluate.py                     Self-contained USC12K evaluation
+infer.py                        352x352 prediction export (optional original-size export)
+evaluate.py                     Fixed 352x352 USCNet-protocol evaluation
 scripts/                        Reproducible Windows launchers
 ```
 
