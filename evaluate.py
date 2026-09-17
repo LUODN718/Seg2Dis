@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
@@ -23,7 +22,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--backbone_name", default=None, choices=("pvt_v2_b2", "pvt_v2_b3"))
     parser.add_argument("--split", default="val")
     parser.add_argument("--output", default="./results/segdis_val.json")
-    parser.add_argument("--image_size", type=int, default=None)
+    parser.add_argument(
+        "--image_size", type=int, default=352,
+        help="Fixed USCNet/main-table evaluation size; only 352 is supported.",
+    )
     parser.add_argument("--batch_size", type=int, default=8)
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--gpu", type=int, default=0)
@@ -37,7 +39,12 @@ def main() -> None:
     device = torch.device(f"cuda:{args.gpu}")
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
     validate_checkpoint(checkpoint)
-    image_size = args.image_size or int(checkpoint.get("image_size", 352))
+    image_size = int(args.image_size)
+    if image_size != 352:
+        raise ValueError(
+            "The reported USC12K protocol evaluates both input and GT at 352x352; "
+            f"got --image_size {image_size}."
+        )
     backbone_name = args.backbone_name or checkpoint.get("backbone_name", "pvt_v2_b2")
     model = build_model(backbone_name=backbone_name).to(device)
     model.load_state_dict(checkpoint.get("model_state", checkpoint), strict=True)
@@ -52,9 +59,10 @@ def main() -> None:
         for batch in tqdm(loader, desc=f"SegDis {args.split}"):
             output = model(batch["image"].to(device, non_blocking=True))
             probability = three_class_probability(output)
-            if probability.shape[-2:] != batch["semantic"].shape[-2:]:
-                probability = F.interpolate(
-                    probability, size=batch["semantic"].shape[-2:], mode="bilinear", align_corners=False
+            if probability.shape[-2:] != (352, 352):
+                raise RuntimeError(
+                    "SegDis must emit 352x352 probabilities under the USCNet protocol, got "
+                    f"{tuple(probability.shape[-2:])}."
                 )
             metric.update(probability.argmax(dim=1), batch["semantic"])
 
@@ -65,6 +73,11 @@ def main() -> None:
         "images": len(dataset),
         "image_size": image_size,
         "classes": ["background", "SOD", "COD"],
+        "protocol": (
+            "USCNet fixed-resize evaluation: image bilinear-resized to 352x352; "
+            "GT nearest-neighbor-resized to 352x352; three-class argmax evaluated "
+            "directly at 352x352; no restoration to original resolution."
+        ),
         **metric.compute(),
     }
     output_path = Path(args.output)
