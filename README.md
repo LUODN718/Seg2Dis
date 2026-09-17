@@ -103,7 +103,7 @@ On Windows, the equivalent parameterized launcher is:
   -BackboneCheckpoint "C:\path\to\pvt_v2_b2.pth"
 ```
 
-Training is end to end. `best.pth` is selected by the lowest epoch-average training objective, matching the reported protocol; `latest.pth` also stores optimizer and scheduler state for `--resume`.
+Training is end to end. `best.pth` is selected by the lowest epoch-average training objective; `latest.pth` also stores optimizer and scheduler state for `--resume`. All reported metrics are computed separately with the fixed `352x352` evaluation protocol below.
 
 ## Evaluation
 
@@ -119,6 +119,8 @@ python -u evaluate.py \
 ```
 
 The evaluator implements the main-table USCNet protocol exactly: the image is bilinearly resized to `352x352`, the GT label is nearest-neighbor resized to `352x352`, and the three-class prediction is evaluated directly at that resolution, without restoration to original image size. It is intentionally fixed to `352` so results are comparable with the table above. The JSON contains the confusion matrix and `uscnet_metrics_percent` with `IoU-BG`, `IoU-S`, `IoU-C`, `FG-mIoU`, `mIoU`, `mAcc`, `pixelAcc`, and `CSCS`. It does not require a separate USCNet checkout or OpenCV installation. The PowerShell launcher evaluates `Scene-A` through `Scene-D` and `val`:
+
+Scene-A contains SOD only, Scene-B contains COD only, Scene-C contains both foreground types, and Scene-D contains background only. Use the corresponding class IoU for the single-type subsets and `IoU-BG`/`pixelAcc` for Scene-D. If a foreground class is absent from both the ground truth and predictions, its IoU is undefined and excluded from `FG-mIoU`; therefore, subset-level `FG-mIoU` should not be compared directly with the complete `val` split or mixed Scene-C results.
 
 ```powershell
 .\scripts\evaluate_usc12k.ps1 `

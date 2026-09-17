@@ -68,7 +68,6 @@ def main() -> None:
 
     result = {
         "method": "SegDis",
-        "variant": "B4",
         "split": args.split,
         "images": len(dataset),
         "image_size": image_size,
