@@ -37,7 +37,10 @@ class SegDis(nn.Module):
         )
         self.query = nn.Parameter(torch.randn(2, hidden) * 0.02)
         self.query_condition = nn.Sequential(
-            nn.Linear(hidden * 3 + 1, hidden), nn.LayerNorm(hidden), nn.SiLU()
+            # Predict an independent scene-conditioned offset for each type
+            # query.  A shared offset would cancel in the subsequent two-way
+            # softmax and therefore could not affect SOD/COD allocation.
+            nn.Linear(hidden * 3 + 1, hidden * 2), nn.LayerNorm(hidden * 2), nn.SiLU()
         )
         self.local_projection = nn.Conv2d(hidden, hidden, 1, bias=False)
         self.type_temperature = nn.Parameter(torch.tensor(1.0))
@@ -49,6 +52,27 @@ class SegDis(nn.Module):
         nn.init.zeros_(self.correction[-1].weight)
         nn.init.zeros_(self.correction[-1].bias)
         self.correction_limit = float(correction_limit)
+
+    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
+                              missing_keys, unexpected_keys, error_msgs):
+        """Upgrade checkpoints trained with the former shared query offset.
+
+        Older checkpoints store a single ``hidden``-dimensional condition
+        vector.  Duplicating it into the two new branches preserves their
+        former behaviour at load time; fine-tuning can then learn distinct
+        SOD/COD offsets.
+        """
+        for suffix in ("0.weight", "0.bias", "1.weight", "1.bias"):
+            key = f"{prefix}query_condition.{suffix}"
+            value = state_dict.get(key)
+            target = self.state_dict()[f"query_condition.{suffix}"]
+            if value is not None and value.shape != target.shape:
+                if value.shape[0] * 2 == target.shape[0] and value.shape[1:] == target.shape[1:]:
+                    state_dict[key] = value.repeat((2,) + (1,) * (value.ndim - 1))
+        super()._load_from_state_dict(
+            state_dict, prefix, local_metadata, strict,
+            missing_keys, unexpected_keys, error_msgs,
+        )
 
     @staticmethod
     def _masked_pool(feature: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
@@ -76,7 +100,8 @@ class SegDis(nn.Module):
         fg = self._masked_pool(semantic_feature, pfg.detach())
         bg = self._masked_pool(semantic_feature, 1.0 - pfg.detach())
         relation = torch.cat([fg, bg, (fg - bg).abs(), F.cosine_similarity(fg, bg, dim=1, eps=1e-6)[:, None]], 1)
-        conditioned_query = self.query[None] + self.query_condition(relation)[:, None]
+        query_offset = self.query_condition(relation).view(-1, 2, self.query.shape[1])
+        conditioned_query = self.query[None] + query_offset
         local = self.local_projection(semantic_feature)
         type_logits = torch.einsum("bqc,bchw->bqhw", conditioned_query, local)
         type_logits = type_logits / self.type_temperature.abs().clamp_min(0.25)
