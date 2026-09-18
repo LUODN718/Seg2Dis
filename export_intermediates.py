@@ -105,6 +105,22 @@ def save_label(path: Path, label: np.ndarray) -> None:
     Image.fromarray(color, "RGB").save(path)
 
 
+def save_figure_map(path: Path, array: np.ndarray) -> None:
+    """Save a real scalar map with the green dashed frame used in the figure."""
+    gray = np.round(np.clip(array, 0.0, 1.0) * 255).astype(np.uint8)
+    image = np.stack([gray, gray, gray], axis=-1)
+    border, dash, gap = 8, 7, 4
+    green = np.asarray((101, 176, 58), dtype=np.uint8)
+    height, width = image.shape[:2]
+    for start in range(0, width, dash + gap):
+        image[:border, start:start + dash] = green
+        image[height - border:, start:start + dash] = green
+    for start in range(0, height, dash + gap):
+        image[start:start + dash, :border] = green
+        image[start:start + dash, width - border:] = green
+    Image.fromarray(image, "RGB").save(path)
+
+
 def prepare_image(path: Path, image_size: int) -> tuple[Image.Image, torch.Tensor]:
     image = Image.open(path).convert("RGB").resize((image_size, image_size), Image.Resampling.BILINEAR)
     raw = np.asarray(image, dtype=np.float32) / 255.0
@@ -170,6 +186,8 @@ def main() -> None:
     save_gray(output_dir / "bg_pooling_weight.png", 1.0 - base)
     save_gray(output_dir / "fg_weighted_semantic_energy.png", normalize(fg_weighted_semantic_energy))
     save_gray(output_dir / "bg_weighted_semantic_energy.png", normalize(bg_weighted_semantic_energy))
+    save_figure_map(output_dir / "fg_pooling_feature_for_figure.png", normalize(fg_weighted_semantic_energy))
+    save_figure_map(output_dir / "bg_pooling_feature_for_figure.png", normalize(bg_weighted_semantic_energy))
 
     save_vector(output_dir / "09_f_fg_vector.png", to_numpy(output["semantic_fg_vector"]), (20, 180, 190))
     save_vector(output_dir / "10_f_bg_vector.png", to_numpy(output["semantic_bg_vector"]), (110, 150, 220))
