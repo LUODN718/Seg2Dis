@@ -154,6 +154,8 @@ def main() -> None:
     final = to_numpy(final_probability)
     semantic_energy = to_numpy(semantic_feature.square().mean(dim=1).sqrt())
     local_energy = to_numpy(local_feature.square().mean(dim=1).sqrt())
+    fg_weighted_semantic_energy = to_numpy((semantic_feature * base_probability).square().mean(dim=1).sqrt())
+    bg_weighted_semantic_energy = to_numpy((semantic_feature * (1.0 - base_probability)).square().mean(dim=1).sqrt())
     raw_rgb = np.asarray(input_image, dtype=np.float32) / 255.0
 
     save_gray(output_dir / "01_master_fg.png", to_numpy(output["master_final"].sigmoid()))
@@ -164,6 +166,10 @@ def main() -> None:
     save_gray(output_dir / "06_boundary.png", to_numpy(boundary))
     save_gray(output_dir / "07_semantic_feature_energy.png", normalize(semantic_energy))
     save_gray(output_dir / "08_local_feature_energy.png", normalize(local_energy))
+    save_gray(output_dir / "fg_pooling_weight.png", base)
+    save_gray(output_dir / "bg_pooling_weight.png", 1.0 - base)
+    save_gray(output_dir / "fg_weighted_semantic_energy.png", normalize(fg_weighted_semantic_energy))
+    save_gray(output_dir / "bg_weighted_semantic_energy.png", normalize(bg_weighted_semantic_energy))
 
     save_vector(output_dir / "09_f_fg_vector.png", to_numpy(output["semantic_fg_vector"]), (20, 180, 190))
     save_vector(output_dir / "10_f_bg_vector.png", to_numpy(output["semantic_bg_vector"]), (110, 150, 220))
