@@ -32,6 +32,21 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def scene_evaluation_scope(split: str) -> tuple[bool, str, str]:
+    """Return whether CSCS applies and the primary metric for a split."""
+    scene = split.removesuffix(".txt")
+    scopes = {
+        "Scene-A": (False, "IoU-S", "SOD-only scene: report SOD IoU; CSCS is not applicable."),
+        "Scene-B": (False, "IoU-C", "COD-only scene: report COD IoU; CSCS is not applicable."),
+        "Scene-C": (True, "FG-mIoU", "Coexisting scene: report both type IoUs and CSCS."),
+        "Scene-D": (False, "IoU-BG", "Background-only scene: report background IoU/pixel accuracy; CSCS is not applicable."),
+    }
+    return scopes.get(
+        scene,
+        (True, "mIoU", "Full split: report three-class metrics and SOD/COD confusion."),
+    )
+
+
 def main() -> None:
     args = parse_args()
     if not torch.cuda.is_available():
@@ -66,6 +81,8 @@ def main() -> None:
                 )
             metric.update(probability.argmax(dim=1), batch["semantic"])
 
+    include_cscs, primary_metric, scope_note = scene_evaluation_scope(args.split)
+
     result = {
         "method": "SegDis",
         "split": args.split,
@@ -77,7 +94,12 @@ def main() -> None:
             "GT nearest-neighbor-resized to 352x352; three-class argmax evaluated "
             "directly at 352x352; no restoration to original resolution."
         ),
-        **metric.compute(),
+        **metric.compute(include_cscs=include_cscs),
+        "evaluation_scope": {
+            "primary_metric": primary_metric,
+            "cscs_applicable": include_cscs,
+            "note": scope_note,
+        },
     }
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)

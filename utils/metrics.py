@@ -24,7 +24,14 @@ class SegmentationMetric:
             encoded, minlength=self.num_classes**2
         ).reshape(self.num_classes, self.num_classes)
 
-    def compute(self) -> dict[str, object]:
+    def compute(self, include_cscs: bool = True) -> dict[str, object]:
+        """Compute metrics for one split.
+
+        CSCS is meaningful only when SOD/COD confusion is in scope. For a
+        single-type or background-only scene, callers should set
+        ``include_cscs=False`` instead of reporting a misleading zero or a
+        one-sided confusion rate.
+        """
         hist = self.confusion_matrix
         diagonal = hist.diag()
         union = hist.sum(0) + hist.sum(1) - diagonal
@@ -35,15 +42,18 @@ class SegmentationMetric:
             torch.nan,
         )
         predicted = hist.sum(0)
-        cscs_terms = torch.stack(
-            [
-                hist[1, 2] / predicted[2] if predicted[2] > 0 else hist.new_tensor(float("nan")),
-                hist[2, 1] / predicted[1] if predicted[1] > 0 else hist.new_tensor(float("nan")),
-            ]
-        )
         miou = torch.nanmean(iou)
         fg_miou = torch.nanmean(iou[1:3])
-        cscs = cscs_terms.mean()
+        if include_cscs:
+            cscs_terms = torch.stack(
+                [
+                    hist[1, 2] / predicted[2] if predicted[2] > 0 else hist.new_tensor(float("nan")),
+                    hist[2, 1] / predicted[1] if predicted[1] > 0 else hist.new_tensor(float("nan")),
+                ]
+            )
+            cscs = cscs_terms.mean()
+        else:
+            cscs = hist.new_tensor(float("nan"))
 
         def number(value: torch.Tensor) -> float | None:
             return None if torch.isnan(value) else float(value)

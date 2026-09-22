@@ -178,9 +178,25 @@ python -u evaluate.py \
 ```
 
 The output JSON contains the confusion matrix and `IoU-BG`, `IoU-S`, `IoU-C`,
-`FG-mIoU`, `mIoU`, `mAcc`, `pixelAcc`, and `CSCS`. This evaluator implements
-the fixed `352 x 352` USCNet protocol and does not restore predictions to the
-original image size.
+`FG-mIoU`, `mIoU`, `mAcc`, `pixelAcc`, and `CSCS` when applicable. This
+evaluator implements the fixed `352 x 352` USCNet protocol and does not
+restore predictions to the original image size.
+
+USC12K scenes have different evaluation scopes:
+
+| Split | Intended use | Report | CSCS |
+|---|---|---|---|
+| `Scene-A` | SOD-only segmentation | `IoU-S` | Not applicable |
+| `Scene-B` | COD-only segmentation | `IoU-C` | Not applicable |
+| `Scene-C` | Mixed SOD/COD parsing | `IoU-S`, `IoU-C`, `FG-mIoU`, `CSCS` | Applicable |
+| `Scene-D` | Background rejection | `IoU-BG`, `pixelAcc` | Not applicable |
+| `val` | Full USC12K evaluation | all three-class metrics | Applicable |
+
+CSCS measures SOD/COD confusion and is therefore not reported for the
+single-type `Scene-A`/`Scene-B` or background-only `Scene-D` subsets. A zero
+CSCS on those subsets must not be interpreted as perfect type discrimination;
+the metric is simply out of scope. The JSON includes an `evaluation_scope`
+field that records the valid primary metric and whether CSCS applies.
 
 ## Inference
 
