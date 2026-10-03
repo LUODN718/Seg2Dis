@@ -13,6 +13,7 @@ from tqdm import tqdm
 from dataset_usc12k import USC12KDataset
 from models import build_model, three_class_probability, validate_checkpoint
 from utils.metrics import SegmentationMetric
+from utils.evaluation import PROTOCOL
 
 
 def parse_args() -> argparse.Namespace:
@@ -30,21 +31,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--workers", type=int, default=4)
     parser.add_argument("--gpu", type=int, default=0)
     return parser.parse_args()
-
-
-def scene_evaluation_scope(split: str) -> tuple[bool, str, str]:
-    """Return whether CSCS applies and the primary metric for a split."""
-    scene = split.removesuffix(".txt")
-    scopes = {
-        "Scene-A": (False, "IoU-S", "SOD-only scene: report SOD IoU; CSCS is not applicable."),
-        "Scene-B": (False, "IoU-C", "COD-only scene: report COD IoU; CSCS is not applicable."),
-        "Scene-C": (True, "FG-mIoU", "Coexisting scene: report both type IoUs and CSCS."),
-        "Scene-D": (False, "IoU-BG", "Background-only scene: report background IoU/pixel accuracy; CSCS is not applicable."),
-    }
-    return scopes.get(
-        scene,
-        (True, "mIoU", "Full split: report three-class metrics and SOD/COD confusion."),
-    )
 
 
 def main() -> None:
@@ -81,29 +67,18 @@ def main() -> None:
                 )
             metric.update(probability.argmax(dim=1), batch["semantic"])
 
-    include_cscs, primary_metric, scope_note = scene_evaluation_scope(args.split)
-
     result = {
         "method": "SegDis",
         "split": args.split,
         "images": len(dataset),
         "image_size": image_size,
         "classes": ["background", "SOD", "COD"],
-        "protocol": (
-            "USCNet fixed-resize evaluation: image bilinear-resized to 352x352; "
-            "GT nearest-neighbor-resized to 352x352; three-class argmax evaluated "
-            "directly at 352x352; no restoration to original resolution."
-        ),
-        **metric.compute(include_cscs=include_cscs),
-        "evaluation_scope": {
-            "primary_metric": primary_metric,
-            "cscs_applicable": include_cscs,
-            "note": scope_note,
-        },
+        "protocol": PROTOCOL,
+        **metric.compute(),
     }
     output_path = Path(args.output)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(result, indent=2), encoding="utf-8")
+    output_path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
     print(json.dumps(result, indent=2))
     print(f"[Saved] {output_path.resolve()}")
 

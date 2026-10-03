@@ -16,22 +16,20 @@ class SegmentationMetric:
         self.confusion_matrix = torch.zeros((num_classes, num_classes), dtype=torch.float64)
 
     def update(self, prediction: torch.Tensor, target: torch.Tensor) -> None:
+        if prediction.shape != target.shape:
+            raise ValueError("Prediction and target shapes must match")
         prediction = prediction.cpu().long().reshape(-1)
         target = target.cpu().long().reshape(-1)
         valid = (target >= 0) & (target < self.num_classes)
+        if ((prediction[valid] < 0) | (prediction[valid] >= self.num_classes)).any():
+            raise ValueError("Prediction contains invalid class indices")
         encoded = self.num_classes * target[valid] + prediction[valid]
         self.confusion_matrix += torch.bincount(
             encoded, minlength=self.num_classes**2
         ).reshape(self.num_classes, self.num_classes)
 
-    def compute(self, include_cscs: bool = True) -> dict[str, object]:
-        """Compute metrics for one split.
-
-        CSCS is meaningful only when SOD/COD confusion is in scope. For a
-        single-type or background-only scene, callers should set
-        ``include_cscs=False`` instead of reporting a misleading zero or a
-        one-sided confusion rate.
-        """
+    def compute(self) -> dict[str, object]:
+        """Apply USCNet formulas without scene-specific overrides."""
         hist = self.confusion_matrix
         diagonal = hist.diag()
         union = hist.sum(0) + hist.sum(1) - diagonal
@@ -44,16 +42,7 @@ class SegmentationMetric:
         predicted = hist.sum(0)
         miou = torch.nanmean(iou)
         fg_miou = torch.nanmean(iou[1:3])
-        if include_cscs:
-            cscs_terms = torch.stack(
-                [
-                    hist[1, 2] / predicted[2] if predicted[2] > 0 else hist.new_tensor(float("nan")),
-                    hist[2, 1] / predicted[1] if predicted[1] > 0 else hist.new_tensor(float("nan")),
-                ]
-            )
-            cscs = cscs_terms.mean()
-        else:
-            cscs = hist.new_tensor(float("nan"))
+        cscs = 0.5 * (hist[1, 2] / predicted[2] + hist[2, 1] / predicted[1])
 
         def number(value: torch.Tensor) -> float | None:
             return None if torch.isnan(value) else float(value)

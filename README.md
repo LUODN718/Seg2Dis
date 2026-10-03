@@ -71,20 +71,25 @@ correction updates foreground confidence before probability composition.
 
 ## Results on USC12K
 
-The values below are those reported in the submitted manuscript. Evaluation
-uses the fixed USCNet `352 x 352` protocol: images are resized bilinearly,
-labels by nearest neighbor, and three-class predictions are evaluated directly
-at that resolution.
+SegDis results below were recomputed from 3,600 raw three-class predictions
+using the public USCNet evaluation rules at `352 x 352`, without Scene-A/B
+remapping. USCNet values are literature results, not a local reproduction.
 
 | Method | FG-mIoU | mIoU | mAcc | IoU-S | IoU-C | CSCS ↓ |
 |---|---:|---:|---:|---:|---:|---:|
 | USCNet | 68.46 | 78.03 | **87.92** | 75.57 | 61.34 | 7.49 |
-| **SegDis (PVT-v2-B2)** | **71.82** | **80.25** | 87.46 | **80.04** | **63.60** | **3.27** |
+| **SegDis (PVT-v2-B2)** | **68.791** | **78.231** | 85.985 | **75.964** | **61.618** | **5.945** |
 
 On the coexisting Scene-C split, SegDis obtains **73.82 IoU-S** and
 **51.60 IoU-C**. Compared with USCNet, IoU-C improves by 5.87 points while
-IoU-S is 0.98 points lower. The main evidence is improved overall three-class
-parsing and substantially reduced SOD/COD confusion.
+IoU-S is 0.98 points lower. Small overall IoU differences are not a claim of
+statistical significance.
+
+**Evaluation correction:** earlier reported `71.820 FG-mIoU / 80.250 mIoU /
+3.275 CSCS` used scene-aware remapping: all foreground became SOD in Scene-A
+and COD in Scene-B. Those values are not comparable to USCNet's raw three-class
+evaluation and are superseded by the table above. No scene remapping is
+supported by the canonical evaluators. Scene-C/D predictions are unaffected.
 
 ## Qualitative Results
 
@@ -178,25 +183,45 @@ python -u evaluate.py \
 ```
 
 The output JSON contains the confusion matrix and `IoU-BG`, `IoU-S`, `IoU-C`,
-`FG-mIoU`, `mIoU`, `mAcc`, `pixelAcc`, and `CSCS` when applicable. This
-evaluator implements the fixed `352 x 352` USCNet protocol and does not
-restore predictions to the original image size.
+`FG-mIoU`, `mIoU`, `mAcc`, `pixelAcc`, and `CSCS`. The protocol is:
 
-USC12K scenes have different evaluation scopes:
+1. Bilinear resize input images to `352 x 352` and apply ImageNet normalization.
+2. Decode GT into `0=background, 1=SOD, 2=COD`, then resize by nearest neighbor.
+3. Take three-class argmax at 352. Do not restore the original resolution.
+4. Preserve predicted types in **all** scenes, including Scene-A/B. Predicting
+   COD in Scene-A or SOD in Scene-B is an error; scene identity never corrects it.
+5. Sum confusion matrices (GT rows, prediction columns) before computing metrics.
+   Do not average scene scores to obtain the overall result.
+6. Apply the same formulas to all splits. Undefined divisions produce JSON
+   `null`, not an artificial zero. Absent GT classes can have IoU zero when
+   falsely predicted. Per-scene means therefore need careful interpretation.
 
-| Split | Intended use | Report | CSCS |
-|---|---|---|---|
-| `Scene-A` | SOD-only segmentation | `IoU-S` | Not applicable |
-| `Scene-B` | COD-only segmentation | `IoU-C` | Not applicable |
-| `Scene-C` | Mixed SOD/COD parsing | `IoU-S`, `IoU-C`, `FG-mIoU`, `CSCS` | Applicable |
-| `Scene-D` | Background rejection | `IoU-BG`, `pixelAcc` | Not applicable |
-| `val` | Full USC12K evaluation | all three-class metrics | Applicable |
+CSCS is `0.5 * (CM[1,2]/CM[:,2].sum() + CM[2,1]/CM[:,1].sum())`.
+Reference: [USCNet test.py](https://github.com/ssecv/USCNet/blob/579934129ea84c9ab7a5c50cc8f58841ee3c330e/test.py)
+and its `metrics/miou.py`. We use float64 accumulation for exact pixel counts;
+the official float32 implementation can differ by negligible rounding. FG-mIoU
+is the mean of SOD and COD IoU, added to the official reported metrics.
 
-CSCS measures SOD/COD confusion and is therefore not reported for the
-single-type `Scene-A`/`Scene-B` or background-only `Scene-D` subsets. A zero
-CSCS on those subsets must not be interpreted as perfect type discrimination;
-the metric is simply out of scope. The JSON includes an `evaluation_scope`
-field that records the valid primary metric and whether CSCS applies.
+### Evaluate saved predictions (CPU, including macOS)
+
+```bash
+python evaluate_predictions.py \
+  --usc_root /path/to/VOC-USC12K \
+  --pred_root ./predictions/segdis \
+  --format color \
+  --split val \
+  --output ./results/segdis/saved_val.json
+```
+
+This produces overall and Scene-A/B/C/D results using the same metric class as
+`evaluate.py`. Predictions may be in `pred_root/Scene-X/sample_id.png` or a flat
+directory; ambiguous duplicates are rejected. `--format color` requires exact
+black/red/green RGB or palette PNGs; `--format label` requires single-channel
+0/1/2 PNGs. Binary 0/255 masks, unknown colors, missing files and non-352 images
+are rejected. No thresholding, resizing of predictions, or scene remapping occurs.
+Previously remapped/binary-only exports cannot recover lost type predictions;
+export raw predictions again. Legacy `_color.png` files must be renamed to
+`sample_id.png` in a dedicated directory, not mixed with other formats.
 
 ## Inference
 
@@ -206,11 +231,14 @@ python -u infer.py \
   --checkpoint ./outputs/segdis/best.pth \
   --split Scene-C \
   --output ./predictions/segdis/Scene-C \
-  --format all \
+  --format color \
   --gpu 0
 ```
 
-`--format` accepts `label`, `color`, `separate`, or `all`. Use
+The default `--format color` saves one RGB `sample_id.png` per input. `label`
+saves class-index PNGs with the same names; use separate directories for formats.
+`separate` and `all` are visualization-only exports, not the canonical evaluation
+input (`all` also writes suffixed files). `--format` accepts all four modes. Use
 `--original_size` only when original-resolution exports are needed; do not use
 it for the fixed-resolution benchmark protocol.
 
@@ -226,6 +254,7 @@ dataset_usc12k.py               USC12K loading and label conversion
 train.py                        End-to-end training
 infer.py                        Prediction export
 evaluate.py                     Fixed USCNet-protocol evaluation
+evaluate_predictions.py         Strict saved-PNG evaluation, same protocol
 export_intermediates.py         Intermediate visualization export
 scripts/                        Windows launchers
 ```

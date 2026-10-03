@@ -1,4 +1,4 @@
-"""Export SegDis USC12K predictions at their original image resolution."""
+"""Export raw three-class SegDis predictions, at 352x352 by default."""
 
 from __future__ import annotations
 
@@ -23,8 +23,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--backbone_name", default=None, choices=("pvt_v2_b2", "pvt_v2_b3"))
     parser.add_argument("--split", default="Scene-C")
     parser.add_argument("--output", required=True)
-    parser.add_argument("--image_size", type=int, default=None)
-    parser.add_argument("--format", choices=("label", "color", "separate", "all"), default="label")
+    parser.add_argument("--image_size", type=int, default=352)
+    parser.add_argument("--format", choices=("label", "color", "separate", "all"), default="color")
     parser.add_argument(
         "--original_size",
         action="store_true",
@@ -45,7 +45,8 @@ def save_prediction(probability: torch.Tensor, sample_id: str, output: Path, mod
         color = np.zeros((*label.shape, 3), dtype=np.uint8)
         color[label == 1] = (255, 0, 0)
         color[label == 2] = (0, 255, 0)
-        Image.fromarray(color, mode="RGB").save(output / f"{sample_id}_color.png")
+        name = f"{sample_id}_color.png" if mode == "all" else f"{sample_id}.png"
+        Image.fromarray(color, mode="RGB").save(output / name)
 
 
 def main() -> None:
