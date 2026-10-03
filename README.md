@@ -2,11 +2,7 @@
 <h3 align="center">Unified Salient and Camouflaged Object Detection</h3>
 
 <p align="center">
-  <strong>DingNing Luo*</strong> &nbsp;&nbsp;
-  <strong>Shuo Dou*</strong> &nbsp;&nbsp;
-  <strong>Tong Jiang*</strong><br>
-  * Equal contribution<br>
-  Official PyTorch implementation of the ICLR 2027 submission
+
 </p>
 
 <p align="center">
