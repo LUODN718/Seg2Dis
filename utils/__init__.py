@@ -1,3 +1,3 @@
-from .loss import FrequencyAdaptiveRefinementLoss
+from .loss import structure_loss
 
-__all__ = ["FrequencyAdaptiveRefinementLoss"]
+__all__ = ["structure_loss"]

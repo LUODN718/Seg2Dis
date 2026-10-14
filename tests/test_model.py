@@ -1,0 +1,62 @@
+"""CPU smoke tests for the complete model; no dataset or weights required."""
+
+import unittest
+
+import torch
+
+from models import (
+    SegDis,
+    V3ForegroundTypeAllocationNet,
+    build_model,
+    validate_checkpoint,
+)
+from utils.loss import structure_loss
+
+
+class ModelTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        torch.set_num_threads(2)
+        torch.manual_seed(42)
+        cls.model = build_model(backbone_checkpoint="").eval()
+        with torch.inference_mode():
+            cls.output = cls.model(torch.randn(1, 3, 64, 64))
+
+    def test_output_shape_and_probability_sum(self):
+        probability = self.output["three_class_probability"]
+        self.assertEqual(tuple(probability.shape), (1, 3, 64, 64))
+        self.assertTrue(torch.isfinite(probability).all())
+        self.assertTrue(((probability >= 0) & (probability <= 1)).all())
+        torch.testing.assert_close(
+            probability.sum(dim=1), torch.ones(1, 64, 64), rtol=1e-6, atol=1e-6)
+
+    def test_foreground_type_probability_composition(self):
+        foreground = self.output["final"].sigmoid()
+        types = self.output["type_probability"]
+        probability = self.output["three_class_probability"]
+        torch.testing.assert_close(probability[:, :1], 1 - foreground)
+        torch.testing.assert_close(probability[:, 1:], foreground * types)
+
+    def test_existing_state_keys_and_legacy_name(self):
+        state = self.model.state_dict()
+        self.assertIn("query", state.keys())
+        self.assertTrue(any(key.startswith("v3.master_decoder.") for key in state))
+        self.assertIs(V3ForegroundTypeAllocationNet, SegDis)
+        result = self.model.load_state_dict(state, strict=True)
+        self.assertEqual(result.missing_keys, [])
+        self.assertEqual(result.unexpected_keys, [])
+
+    def test_complete_configuration_metadata(self):
+        validate_checkpoint({"variant": "B4", "backbone_name": "pvt_v2_b2"})
+        validate_checkpoint({"variant": "V3_FOREGROUND_TYPE_ALLOCATION"})
+        with self.assertRaises(ValueError):
+            validate_checkpoint({"variant": "B0"})
+
+    def test_foreground_loss_is_finite(self):
+        logit = self.output["final"].clone()
+        for target in (torch.zeros_like(logit), torch.ones_like(logit)):
+            self.assertTrue(torch.isfinite(structure_loss(logit, target)))
+
+
+if __name__ == "__main__":
+    unittest.main()

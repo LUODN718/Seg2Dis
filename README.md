@@ -2,10 +2,6 @@
 <h3 align="center">Unified Salient and Camouflaged Object Detection</h3>
 
 <p align="center">
-
-</p>
-
-<p align="center">
   <img src="assets/paper_teaser.png" alt="SegDis overview" width="96%">
 </p>
 
@@ -241,19 +237,41 @@ it for the fixed-resolution benchmark protocol.
 ## Repository Layout
 
 ```text
-assets/                         Paper figures
-models/frequency_adaptive_refinement_net.py
-                                PFRS implementation
-models/foreground_type_allocation.py
-                                Relation-conditioned type allocation
-dataset_usc12k.py               USC12K loading and label conversion
-train.py                        End-to-end training
-infer.py                        Prediction export
-evaluate.py                     Fixed USCNet-protocol evaluation
-evaluate_predictions.py         Strict saved-PNG evaluation, same protocol
-export_intermediates.py         Intermediate visualization export
-scripts/                        Windows launchers
+assets/                              Figures referenced in this README
+models/
+  factory.py                         Model construction and checkpoint validation
+  foreground_type_allocation.py      Complete SegDis / FBRC
+  frequency_adaptive_refinement_net.py  PFRS and its required refinement blocks
+  master_residual_net.py             Shared encoder, Master Decoder, residual blocks
+utils/                               Foreground loss and canonical evaluation
+tests/                               Model and evaluation regression tests
+scripts/                             Windows training/inference/evaluation launchers
+config.py                            Model configuration
+dataset_usc12k.py                     Dataset loading and label conversion
+train.py                             End-to-end training
+infer.py                             Prediction export
+evaluate.py                          Fixed USCNet-protocol evaluation
+evaluate_predictions.py              Saved-PNG evaluation (CPU / macOS supported)
+export_intermediates.py               Intermediate visualization export
+requirements.txt                     Python dependencies
+environment.yml                      Conda environment
 ```
+
+`main` contains the complete model and its reproducible pipeline, not historical
+experimental networks or ablation launchers. The legacy `v3` module names and
+checkpoint metadata are retained for compatibility with released weights;
+`B4` in checkpoint metadata identifies the complete configuration, **not** a
+PVT-v2-B4 backbone. The default encoder is PVT-v2-B2.
+
+Run the regression tests from the repository root:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Model tests run on CPU without downloading pretrained weights. Dataset files,
+checkpoints, predictions, logs, and local experiment outputs belong outside
+version control and are excluded by `.gitignore`.
 
 ## Checkpoints and Reproducibility
 
