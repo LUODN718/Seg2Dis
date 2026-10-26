@@ -297,6 +297,12 @@ or use the SHA256-checked downloader:
 python scripts/download_checkpoint.py
 ```
 
+For the current private repository, sign in to GitHub and download from the
+release page, or use `python scripts/download_checkpoint.py --use_git_credentials`
+with your configured Git credential helper. The script also accepts an existing
+`GITHUB_TOKEN` or `GH_TOKEN` environment variable. Access requires repository
+permission; no credential is stored in the repository or forwarded to asset hosts.
+
 The default output is `checkpoints/segdis_rgb_pvtb2_352.pth`. Pass this file
 to `--checkpoint` in inference, evaluation and intermediate export. Every
 selected model tensor is preserved exactly. Optimizer and RNG states are
