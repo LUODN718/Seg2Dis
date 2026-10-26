@@ -10,10 +10,6 @@
   <a href="#checkpoints-and-reproducibility">Checkpoints</a>
 </p>
 
-<p align="center">
-  <img src="assets/paper_teaser.png" alt="SegDis overview" width="96%">
-</p>
-
 Salient object detection (SOD) and camouflaged object detection (COD) both
 require foreground discovery, but a shared binary foreground mask cannot tell
 the two object types apart when they coexist. **SegDis** explicitly separates
