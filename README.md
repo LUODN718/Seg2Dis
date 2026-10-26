@@ -181,24 +181,16 @@ supported by the canonical evaluators. Scene-C/D predictions are unaffected.
 
 ## Qualitative Results
 
-The framework, PFRS, and Master Decoder diagrams above are exported from the
-current manuscript. The teaser and qualitative figures retain earlier
-checkpoint examples: they illustrate the prediction pipeline, not new
-benchmark evidence for the released checkpoint.
-
-<p align="center">
-  <img src="assets/paper_inference_trace.png" alt="SegDis inference process" width="100%">
-</p>
-
-The `SOD | FG` and `COD | FG` columns contain the two conditional type
-probabilities and no background channel. The last column is produced only after
-combining these responses with the unified foreground probability.
+The examples below show ground truth, predicted SOD/COD labels, and overlays
+on the original images.
 
 <p align="center">
   <img src="assets/paper_qualitative.png" alt="USC12K qualitative results" width="100%">
 </p>
 
 Red denotes SOD, green denotes COD, and black denotes background.
+These retained manuscript examples are qualitative illustrations, not a new
+benchmark evaluation of the released checkpoint.
 
 ## Installation
 
