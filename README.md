@@ -33,7 +33,7 @@ required at inference time.
 - **Mixed-scene parsing:** SegDis directly predicts background, SOD, and COD in
   USC12K scenes where salient and camouflaged objects coexist.
 
-This branch releases **SegDis-RGB with PVT-v2-B2**: 28.80M total parameters,
+This branch releases **SegDis with PVT-v2-B2**: 28.80M total parameters,
 `352 x 352` input, and a complete training, inference, and evaluation pipeline.
 
 ## Quick Start
@@ -54,16 +54,18 @@ evaluation also runs on CPU, including macOS.
 ### 2. Download the checkpoint
 
 ```bash
-python scripts/download_checkpoint.py --use_git_credentials
+python scripts/download_checkpoint.py --use_git_credentials \
+  --output checkpoints/segdis_pvtb2_352.pth
 ```
 
 For the current private repository, this uses your configured Git credential
 helper. You need repository access. Alternatively, download the asset from the
-[RGB release](https://github.com/LUODN718/SegDis/releases/tag/rgb-v1-20261026)
+[checkpoint release](https://github.com/LUODN718/SegDis/releases/tag/rgb-v1-20261026)
 or use an existing `GITHUB_TOKEN` / `GH_TOKEN` environment variable with
-`python scripts/download_checkpoint.py`. Do not put tokens in source files.
-The downloader verifies the asset and saves it to
-`checkpoints/segdis_rgb_pvtb2_352.pth`.
+the downloader without `--use_git_credentials`. Do not put tokens in source
+files. The command above verifies the asset and saves it to
+`checkpoints/segdis_pvtb2_352.pth`. For manual downloads, use this filename
+to follow the examples below.
 
 ### 3. Export predictions
 
@@ -72,14 +74,14 @@ Prepare [USC12K](#data), replace the dataset path, and run:
 ```bash
 python infer.py \
   --usc_root /path/to/VOC-USC12K \
-  --checkpoint checkpoints/segdis_rgb_pvtb2_352.pth \
+  --checkpoint checkpoints/segdis_pvtb2_352.pth \
   --split Scene-C \
   --output predictions/segdis/Scene-C \
   --format color \
   --gpu 0
 ```
 
-This exports `352 x 352` RGB PNGs: **red = SOD**, **green = COD**, and
+This exports `352 x 352` color PNGs: **red = SOD**, **green = COD**, and
 **black = background**. For a full validation run, use `--split val` with
 the [evaluation command](#evaluation).
 
@@ -110,18 +112,19 @@ class and constrains the final three-class prediction.
   <img src="assets/paper_master_decoder.png" alt="Master Decoder" width="25%">
 </p>
 
-PFRS combines a PVT-v2 encoder, a Master Decoder, RGB residual evidence,
+PFRS combines a PVT-v2 encoder, a Master Decoder, residual evidence,
 progressive region refinement, and global/ROI boundary correction. The residual
-encoder receives five channels, `[normalized original RGB, E, U]`:
+encoder receives the normalized original image together with two guidance maps,
+`[I, E, U]` (five channels in total):
 
 ```text
 E = Blur(P_M^2)          coarse foreground guide
 U = 4 * P_M * (1 - P_M)  foreground uncertainty
 ```
 
-`P_M` is the Master Decoder's coarse foreground probability. The RGB channels
-remain unchanged after normalization; `E` and `U` are concatenated as guidance,
-not multiplied into the image to erase foreground regions.
+`P_M` is the Master Decoder's coarse foreground probability, and `I` is the
+original three-channel image after normalization. `E` and `U` provide coarse
+foreground and uncertainty guidance for the residual pyramid.
 The resulting foreground probability provides the spatial support for type
 allocation.
 
@@ -143,9 +146,9 @@ All values below are percentages; higher is better except for CSCS.
 | Method | FG-mIoU ↑ | mIoU ↑ | mAcc ↑ | IoU-S ↑ | IoU-C ↑ | CSCS ↓ |
 |---|---:|---:|---:|---:|---:|---:|
 | USCNet | 68.46 | 78.03 | **87.92** | 75.57 | 61.34 | 7.49 |
-| **SegDis-RGB (PVT-v2-B2)** | **68.983** | **78.351** | 85.945 | **75.663** | **62.304** | **5.752** |
+| **SegDis (PVT-v2-B2)** | **68.983** | **78.351** | 85.945 | **75.663** | **62.304** | **5.752** |
 
-The RGB checkpoint contains **28,803,590 parameters** and was selected at
+The checkpoint contains **28,803,590 parameters** and was selected at
 epoch 50 by minimum mean training loss, without validation-based selection.
 USCNet scores are reported in the
 [original paper](https://openaccess.thecvf.com/content/ICCV2025/papers/Zhou_Rethinking_Detecting_Salient_and_Camouflaged_Objects_in_Unconstrained_Scenes_ICCV_2025_paper.pdf).
@@ -169,8 +172,8 @@ with class IoUs and foreground coverage, not as a direct foreground swap rate.
 <details>
 <summary>Earlier results and evaluation correction</summary>
 
-Historical erased-input results (68.791 FG-mIoU, 78.231 mIoU, 5.945 CSCS)
-belong to a different checkpoint and are not the RGB release above.
+Earlier results (68.791 FG-mIoU, 78.231 mIoU, 5.945 CSCS) belong to a
+different checkpoint and are not the release above.
 
 **Evaluation correction:** earlier reported `71.820 FG-mIoU / 80.250 mIoU /
 3.275 CSCS` used scene-aware remapping: all foreground became SOD in Scene-A
@@ -185,7 +188,7 @@ supported by the canonical evaluators. Scene-C/D predictions are unaffected.
 The framework, PFRS, and Master Decoder diagrams above are exported from the
 current manuscript. The teaser and qualitative figures retain earlier
 checkpoint examples: they illustrate the prediction pipeline, not new
-benchmark evidence for the released RGB checkpoint.
+benchmark evidence for the released checkpoint.
 
 <p align="center">
   <img src="assets/paper_inference_trace.png" alt="SegDis inference process" width="100%">
@@ -327,7 +330,7 @@ python evaluate_predictions.py \
 This produces overall and Scene-A/B/C/D results using the same metric class as
 `evaluate.py`. Predictions may be in `pred_root/Scene-X/sample_id.png` or a flat
 directory; ambiguous duplicates are rejected. `--format color` requires exact
-black/red/green RGB or palette PNGs; `--format label` requires single-channel
+black/red/green color or palette PNGs; `--format label` requires single-channel
 0/1/2 PNGs. Binary 0/255 masks, unknown colors, missing files and non-352 images
 are rejected. No thresholding, resizing of predictions, or scene remapping occurs.
 Previously remapped/binary-only exports cannot recover lost type predictions;
@@ -346,7 +349,7 @@ python -u infer.py \
   --gpu 0
 ```
 
-The default `--format color` saves one RGB `sample_id.png` per input. `label`
+The default `--format color` saves one color `sample_id.png` per input. `label`
 saves class-index PNGs with the same names; use separate directories for formats.
 `separate` and `all` are visualization-only exports, not the canonical evaluation
 input (`all` also writes suffixed files). `--format` accepts all four modes. Use
@@ -390,7 +393,7 @@ version control and are excluded by `.gitignore`.
 
 | Item | Reference |
 |---|---|
-| Complete RGB weights | [Release `rgb-v1-20261026`](https://github.com/LUODN718/SegDis/releases/tag/rgb-v1-20261026) |
+| Complete SegDis weights | [Checkpoint release](https://github.com/LUODN718/SegDis/releases/tag/rgb-v1-20261026) |
 | Asset and integrity information | [Release manifest](benchmarks/rgb_release.json) |
 | USC12K counts and metrics | [Raw three-class results](benchmarks/usc12k_rgb_352.json) |
 | Binary foreground measurements | [PFRS / corrected foreground results](benchmarks/foreground_rgb_352.json) |
@@ -403,12 +406,12 @@ All selected model tensors are preserved exactly; dataset files and ImageNet
 backbone weights are not bundled. Credentials are not saved in the repository
 or forwarded to redirected asset hosts by the downloader.
 
-The loader requires `residual_input_mode=rgb` and rejects historical erased
-checkpoints: both modes have identical tensor shapes but different behavior.
+The loader checks checkpoint metadata for compatibility. Historical
+checkpoints with a different input path are not interchangeable with this release.
 Source and published asset hashes are in
 [the release manifest](benchmarks/rgb_release.json).
 
-The release implementation was checked against the frozen RGB experiment
+The release implementation was checked against the frozen experiment
 using one real 352x352 image per USC12K scene. Probabilities, foreground logits,
 type logits and residual inputs match within 1e-6; all four final label maps
 match stored experiment predictions exactly. This checks implementation
