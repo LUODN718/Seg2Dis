@@ -19,7 +19,14 @@ def three_class_probability(output: dict[str, torch.Tensor | object]) -> torch.T
 
 
 def validate_checkpoint(checkpoint: dict) -> None:
+    if checkpoint.get("residual_input_mode") != "rgb":
+        raise ValueError(
+            "This release loads complete SegDis-RGB checkpoints only. "
+            "Expected residual_input_mode='rgb'; do not load historical erased-input weights."
+        )
     stored = str(checkpoint.get("variant", checkpoint.get("ablation", "B4"))).upper()
+    if stored == "SEGDIS_RGB_RESIDUAL":
+        return
     suffix = stored.rsplit("_", 1)[-1]
     if stored == "V3_FOREGROUND_TYPE_ALLOCATION":
         suffix = "B4"

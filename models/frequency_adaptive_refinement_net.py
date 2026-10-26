@@ -283,7 +283,11 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
         use_uncertainty_features: bool = True,
         semantic_uncertainty_scope: bool = False,
         boundary_uses_uncertainty: bool = True,
+        residual_input_mode: str = "erased",
     ):
+        if residual_input_mode not in ("rgb", "erased"):
+            raise ValueError(f"Unknown residual input mode: {residual_input_mode}")
+        self.residual_input_mode = residual_input_mode
         if ablation not in self.ABLATIONS:
             raise ValueError(
                 f"Unknown V3 ablation '{ablation}'. Choose from {self.ABLATIONS}."
@@ -397,8 +401,11 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
         del master_probability
         if not self.use_residual:
             return self._zero_residual_features(original_features), {}
-        low_pass_image = self._average_blur(image, CFG.erase_fill_kernel)
-        residual_image = image * (1.0 - erase_mask) + low_pass_image * erase_mask
+        if self.residual_input_mode == "rgb":
+            residual_image = image
+        else:
+            low_pass_image = self._average_blur(image, CFG.erase_fill_kernel)
+            residual_image = image * (1.0 - erase_mask) + low_pass_image * erase_mask
         residual_input = torch.cat([residual_image, erase_mask, uncertainty], dim=1)
         return self.residual_evidence(residual_input), {
             "residual_input": residual_input,

@@ -49,8 +49,10 @@ class and constrains the final three-class prediction.
   <img src="assets/paper_pfrs.png" alt="Progressive Foreground Refinement System" width="96%">
 </p>
 
-PFRS combines a PVT-v2 encoder, a Master Decoder, soft erasure and residual
-evidence, progressive region refinement, and global/ROI boundary correction.
+PFRS combines a PVT-v2 encoder, a Master Decoder, RGB residual evidence,
+progressive region refinement, and global/ROI boundary correction. The residual
+encoder receives `[normalized original RGB, E, U]`: E is the soft foreground
+guide and U is uncertainty. The RGB image channels are not erased.
 The resulting foreground probability provides the spatial support for type
 allocation.
 
@@ -70,12 +72,24 @@ remapping. USCNet values are literature results, not a local reproduction.
 | Method | FG-mIoU | mIoU | mAcc | IoU-S | IoU-C | CSCS ↓ |
 |---|---:|---:|---:|---:|---:|---:|
 | USCNet | 68.46 | 78.03 | **87.92** | 75.57 | 61.34 | 7.49 |
-| **SegDis (PVT-v2-B2)** | **68.791** | **78.231** | 85.985 | **75.964** | **61.618** | **5.945** |
+| **SegDis-RGB (PVT-v2-B2)** | **68.983** | **78.351** | 85.945 | **75.663** | **62.304** | **5.752** |
 
-On the coexisting Scene-C split, SegDis obtains **73.82 IoU-S** and
-**51.60 IoU-C**. Compared with USCNet, IoU-C improves by 5.87 points while
-IoU-S is 0.98 points lower. Small overall IoU differences are not a claim of
-statistical significance.
+This release uses the complete RGB model, selected at epoch 50 by minimum
+mean training loss, with 28,803,590 parameters. Historical erased-input
+results (68.791 FG-mIoU, 78.231 mIoU, 5.945 CSCS) are a different checkpoint.
+Small differences from other models are not a claim of statistical significance.
+
+| Scene | IoU-S | IoU-C | CSCS |
+|---|---:|---:|---:|
+| A | 83.139 | 0.000 | 45.589 |
+| B | 0.000 | 69.788 | 18.579 |
+| C | 71.612 | 51.487 | 11.822 |
+| D | 0.000 | 0.000 | 0.000 |
+
+Absent-type IoUs are zero when that type is falsely predicted. Scene-D has
+background false positives despite CSCS=0. Overall scores use the sum of all
+four scene confusion matrices, not the average of scene scores. Exact results
+and verification evidence are in [benchmarks](benchmarks/).
 
 **Evaluation correction:** earlier reported `71.820 FG-mIoU / 80.250 mIoU /
 3.275 CSCS` used scene-aware remapping: all foreground became SOD in Scene-A
@@ -275,10 +289,38 @@ version control and are excluded by `.gitignore`.
 
 ## Checkpoints and Reproducibility
 
-The repository contains the canonical training, inference, and evaluation
-pipeline. Dataset files, pretrained backbones, trained checkpoints, and
-predictions are not committed. Pretrained SegDis checkpoints and download links
-will be added after the public release is finalized.
+Download the complete RGB checkpoint from the
+[RGB release](https://github.com/LUODN718/SegDis/releases/tag/rgb-v1-20261026),
+or use the SHA256-checked downloader:
+
+```bash
+python scripts/download_checkpoint.py
+```
+
+The default output is `checkpoints/segdis_rgb_pvtb2_352.pth`. Pass this file
+to `--checkpoint` in inference, evaluation and intermediate export. Every
+selected model tensor is preserved exactly. Optimizer and RNG states are
+omitted from the download, so it is for inference rather than exact training
+resume. New training checkpoints include optimizer, scheduler and RNG states.
+Data and ImageNet backbone weights are not bundled.
+
+The loader requires `residual_input_mode=rgb` and rejects historical erased
+checkpoints: both modes have identical tensor shapes but different behavior.
+Source and published asset hashes are in
+[the release manifest](benchmarks/rgb_release.json).
+
+The public implementation was checked against the frozen RGB experiment
+using one real 352x352 image per USC12K scene. Probabilities, foreground logits,
+type logits and residual inputs match within 1e-6; all four final label maps
+match stored experiment predictions exactly. This checks implementation
+equivalence; it is not a fresh full-dataset benchmark.
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Existing figure images predate this RGB release and illustrate architecture
+and historical qualitative cases, rather than new RGB benchmark evidence.
 
 ## Citation
 

@@ -1,0 +1,57 @@
+{
+  "model": "complete SegDis-RGB",
+  "source_checkpoint_sha256": "53eea0f1ec3a8521090132a30ecd6bf86020376511a7b4c85069f8783eee20d3",
+  "selected_epoch": 50,
+  "strict_state_load": true,
+  "device": "CPU",
+  "image_size": 352,
+  "parameter_count": 28803590,
+  "reference": "Original RGB experiment source snapshot",
+  "cases": [
+    {
+      "scene": "Scene-A",
+      "sample_id": "DUTS-sun_aazlgaojiylgkyow",
+      "max_absolute_error": {
+        "three_class_probability": 0.0,
+        "union": 0.0,
+        "semantic_logits": 0.0,
+        "residual_input": 0.0
+      },
+      "matches_saved_prediction": true
+    },
+    {
+      "scene": "Scene-B",
+      "sample_id": "camourflage_01164",
+      "max_absolute_error": {
+        "three_class_probability": 0.0,
+        "union": 0.0,
+        "semantic_logits": 0.0,
+        "residual_input": 0.0
+      },
+      "matches_saved_prediction": true
+    },
+    {
+      "scene": "Scene-C",
+      "sample_id": "COD10K-CAM-2-Terrestrial-45-Spider-2730",
+      "max_absolute_error": {
+        "three_class_probability": 0.0,
+        "union": 0.0,
+        "semantic_logits": 0.0,
+        "residual_input": 0.0
+      },
+      "matches_saved_prediction": true
+    },
+    {
+      "scene": "Scene-D",
+      "sample_id": "COD10K-NonCAM-5-Background-4-Sky-4265",
+      "max_absolute_error": {
+        "three_class_probability": 0.0,
+        "union": 0.0,
+        "semantic_logits": 0.0,
+        "residual_input": 0.0
+      },
+      "matches_saved_prediction": true
+    }
+  ],
+  "scope": "One real case from each scene; not a fresh full-dataset benchmark"
+}

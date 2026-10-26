@@ -47,10 +47,22 @@ class ModelTests(unittest.TestCase):
         self.assertEqual(result.unexpected_keys, [])
 
     def test_complete_configuration_metadata(self):
-        validate_checkpoint({"variant": "B4", "backbone_name": "pvt_v2_b2"})
-        validate_checkpoint({"variant": "V3_FOREGROUND_TYPE_ALLOCATION"})
+        validate_checkpoint({"variant": "SEGDIS_RGB_RESIDUAL", "residual_input_mode": "rgb"})
+        validate_checkpoint({"variant": "B4", "residual_input_mode": "rgb"})
         with self.assertRaises(ValueError):
-            validate_checkpoint({"variant": "B0"})
+            validate_checkpoint({"variant": "B4"})
+        with self.assertRaises(ValueError):
+            validate_checkpoint({"variant": "SEGDIS_RGB_RESIDUAL", "residual_input_mode": "erased"})
+        with self.assertRaises(ValueError):
+            validate_checkpoint({"variant": "B0", "residual_input_mode": "rgb"})
+
+    def test_rgb_residual_keeps_image_mask_and_uncertainty(self):
+        image = torch.randn(1, 3, 64, 64)
+        with torch.inference_mode():
+            output = self.model(image)
+        torch.testing.assert_close(output['residual_input'][:, :3], image, rtol=0, atol=0)
+        self.assertEqual(output['residual_input'].shape[1], 5)
+        self.assertEqual(self.model.v3.residual_input_mode, 'rgb')
 
     def test_foreground_loss_is_finite(self):
         logit = self.output["final"].clone()

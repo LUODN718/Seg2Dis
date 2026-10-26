@@ -18,12 +18,14 @@ class SegDis(nn.Module):
     """
 
     def __init__(self, backbone_checkpoint: str | None = None, v3_checkpoint: str | None = None, hidden: int = 96,
-                 correction_limit: float = 0.20, backbone_name: str = CFG.backbone_name):
+                 correction_limit: float = 0.20, backbone_name: str = CFG.backbone_name,
+                 residual_input_mode: str = "rgb"):
         super().__init__()
         self.v3 = FrequencyAdaptiveRefinementNet(
             backbone_name=backbone_name,
             backbone_checkpoint=backbone_checkpoint,
             ablation="no_gate_no_frequency_s4_s3_context",
+            residual_input_mode=residual_input_mode,
         )
         if v3_checkpoint:
             state = torch.load(v3_checkpoint, map_location="cpu", weights_only=False)

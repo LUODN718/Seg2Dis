@@ -72,6 +72,7 @@ def main() -> None:
         raise RuntimeError("CUDA is required for training")
     device = torch.device(f"cuda:{args.gpu}")
     dataset = USC12KDataset(args.usc_root, "train", args.image_size, training=True)
+    generator = torch.Generator().manual_seed(args.seed)
     loader = DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -79,7 +80,7 @@ def main() -> None:
         drop_last=True,
         num_workers=args.workers,
         pin_memory=True,
-        generator=torch.Generator().manual_seed(args.seed),
+        generator=generator,
     )
     model = build_model(args.backbone_checkpoint, args.backbone_name).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.base_lr, weight_decay=CFG.weight_decay)
@@ -94,6 +95,13 @@ def main() -> None:
         scheduler.load_state_dict(checkpoint["scheduler_state"])
         start_epoch = int(checkpoint["epoch"])
         best = float(checkpoint.get("best_loss", best))
+        if 'rng' in checkpoint:
+            rng = checkpoint['rng']
+            random.setstate(rng['python'])
+            np.random.set_state(rng['numpy'])
+            torch.set_rng_state(rng['torch'])
+            torch.cuda.set_rng_state_all(rng['cuda'])
+            generator.set_state(rng['loader'])
 
     output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -116,12 +124,16 @@ def main() -> None:
             "model_state": model.state_dict(),
             "optimizer_state": optimizer.state_dict(),
             "scheduler_state": scheduler.state_dict(),
-            "variant": "B4",
+            "variant": "SEGDIS_RGB_RESIDUAL",
+            "residual_input_mode": "rgb",
             "backbone_name": args.backbone_name,
             "image_size": args.image_size,
             "type_weight": args.type_weight,
             "calibration_weight": args.calibration_weight,
             "best_loss": min(best, averages[0]),
+            "rng": {"python": random.getstate(), "numpy": np.random.get_state(),
+                    "torch": torch.get_rng_state(), "cuda": torch.cuda.get_rng_state_all(),
+                    "loader": generator.get_state()},
         }
         torch.save(state, output_dir / "latest.pth")
         if averages[0] < best:
