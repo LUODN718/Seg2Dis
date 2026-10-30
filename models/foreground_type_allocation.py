@@ -1,4 +1,4 @@
-"""Complete SegDis model: PFRS foreground discovery and SOD/COD allocation."""
+"""Complete SegDis model: foreground discovery and SOD/COD allocation."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import torch.nn.functional as F
 from torch import nn
 
 from config import CFG
-from .progressive_foreground_refinement import ProgressiveForegroundRefinement
+from .foreground_refinement import ForegroundRefinement
 
 
 class SegDis(nn.Module):
@@ -19,12 +19,14 @@ class SegDis(nn.Module):
         backbone_name: str = CFG.backbone_name,
         correction_enabled: bool = True,
         relation_conditioning: bool = True,
+        residual_input_mode: str = "rgb",
     ):
         super().__init__()
         self.architecture = CFG.architecture
-        self.v3 = ProgressiveForegroundRefinement(
+        self.foreground = ForegroundRefinement(
             backbone_name=backbone_name,
             backbone_checkpoint=backbone_checkpoint,
+            residual_input_mode=residual_input_mode,
         )
         hidden = 96
         correction_limit = 0.20
@@ -66,7 +68,7 @@ class SegDis(nn.Module):
         return (dilated - eroded).clamp(0.0, 1.0)
 
     def forward(self, image: torch.Tensor, **kwargs) -> dict[str, torch.Tensor | object]:
-        base = self.v3(image, **kwargs)
+        base = self.foreground(image, **kwargs)
         base_logit = base["final"]
         pfg = base_logit.sigmoid()
         features = base["semantic_features"]
@@ -76,7 +78,7 @@ class SegDis(nn.Module):
         )
 
         # The detached foreground support prevents type supervision from
-        # hijacking V3's foreground discovery path.
+        # hijacking foreground refinement's foreground discovery path.
         fg = self._masked_pool(semantic_feature, pfg.detach())
         bg = self._masked_pool(semantic_feature, 1.0 - pfg.detach())
         if self.relation_conditioning:

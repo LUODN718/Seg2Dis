@@ -1,15 +1,19 @@
 # Current experiment plan
 
 All definitions are in `configs/`; every model uses the same clean foreground
-implementation. There are **14 required training runs** for the retained study.
-The priority queue starts with the main SegDis result, then H(F), H(PFG),
-H(F,PFG), the existing H(Fdec) FLR ablation with full RTA, and the RTA
-ablation with full FLR. USC12K FLR-only and independent FLR SOD/COD/Joint runs
-remain deferred. A configuration file does not imply a running job.
+implementation. There are **15 required training runs** for the retained study.
+After FSP, the automatic queue compares the complete model with a residual
+encoder that replaces E with the detached master prediction P_M while keeping
+RGB and U. The existing complete SegDis run is the current `[RGB, E, U]` input
+condition; both conditions have five input channels.
+The main/head/RTA/FLR ablation queue is held for a manual start. USC12K FLR-only
+and independent FLR SOD/COD/Joint runs remain deferred. A configuration file
+does not imply a running job.
 
 | ID / configuration | Training | Budget | Role |
 |---|---|---|---|
 | USC12K_SEGDIS | USC12K | 50 epochs / 352 | Shared complete endpoint for all tables |
+| USC12K_SEGDIS_PM_RGB_U | USC12K | 50 / 352 | Complete SegDis; replace E with detached P_M, keep RGB and U |
 | USC12K_PFG_HEAD | USC12K | 50 / 352 | B0 / H(PFG), reused across framework and RTA tables |
 | USC12K_SEGDIS_NO_CORRECTION | USC12K | 50 / 352 | B1: relation-conditioned type allocation without C |
 | USC12K_SEGDIS_NO_RTA | USC12K | 50 / 352 | RTA ablation (formerly FBRC): removes relation-conditioned queries and bounded foreground correction |
@@ -60,10 +64,18 @@ retrained or silently loaded into this repository's model.
 
 ## Queue scope
 
-The automatic training queue is:
+The automatic queue (default) is:
 
-`FSPNet-SFViT -> USC12K_SEGDIS -> USC12K_SEMANTIC_HEAD -> USC12K_PFG_HEAD -> USC12K_SEMANTIC_PFG_HEAD -> USC12K_DECODER_HEAD -> USC12K_SEGDIS_NO_RTA`.
+`FSP -> USC12K_SEGDIS_PM_RGB_U -> USC12K_SEGDIS`.
 
-The remaining required runs, including USC12K FLR-only, task-specific SegDis,
-and independent FLR SOD/COD/Joint, stay deferred until this priority queue finishes.
-The full endpoint is trained once and reused rather than counted again in tables.
+After reviewing these results, start the held main/head/RTA/FLR ablation queue
+manually from the repository root:
+
+```powershell
+python scripts/run_priority_queue.py --queue manual --output $env:SEGDIS_OUTPUT --usc_root $env:USC12K_ROOT --backbone_checkpoint $env:PVT_B2_CHECKPOINT --device cuda:0
+```
+
+Set `SEGDIS_OUTPUT`, `USC12K_ROOT`, and `PVT_B2_CHECKPOINT` to the same paths
+used for the automatic run. Manual runs write a separate `manual_queue_status.json`
+and `manual_complete.json`. Task-specific SOD/COD/Joint and independent FLR runs
+remain deferred as previously configured.

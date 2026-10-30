@@ -10,10 +10,15 @@ from .runtime import canonical_hash, seed_worker, sha256
 FIELDS={'id','model_variant','task','epochs','image_size','batch_size','workers','seed',
         'base_lr','backbone_lr','weight_decay','gradient_clip','type_weight','calibration_weight',
         'sampling','selection','expected_train_images','expected_steps_per_epoch'}
+OPTIONAL_FIELDS={'residual_input_mode'}
 
 def load_config(path):
     config=json.loads(Path(path).read_text(encoding='utf-8-sig'))
-    if set(config)!=FIELDS: raise ValueError(f'Configuration fields differ: {set(config)^FIELDS}')
+    if set(config)-FIELDS-OPTIONAL_FIELDS or FIELDS-set(config):
+        raise ValueError(f'Configuration fields differ: {set(config)^FIELDS}')
+    config.setdefault('residual_input_mode','rgb')
+    if config['residual_input_mode'] not in ('rgb','rgb_pm_u'):
+        raise ValueError('Unknown residual input mode')
     if config['model_variant'] not in VARIANTS or config['task'] not in ('USC12K','SOD','COD','JOINT'):
         raise ValueError('Unknown variant/task')
     for field in ('epochs','batch_size','image_size','expected_train_images','expected_steps_per_epoch'):

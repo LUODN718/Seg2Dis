@@ -46,7 +46,7 @@ def compute_loss(model,batch,device,type_weight=0.5,calibration_weight=0.5,task=
     return loss,(terms['fg'],terms['type'],terms['composed'])
 
 def make_optimizer(model,config):
-    backbone=list(model.v3.backbone.parameters())
+    backbone=list(model.foreground.backbone.parameters())
     ids={id(p) for p in backbone}
     others=[p for p in model.parameters() if id(p) not in ids]
     groups=[{'params':backbone,'lr':config['backbone_lr']},{'params':others,'lr':config['base_lr']}]
@@ -86,7 +86,9 @@ def main():
     provenance={'training_config':config,'data_identity':data,'backbone_sha256':sha256(args.backbone_checkpoint),
                 'source_manifest':sources,'source_fingerprint':canonical_hash(sources),
                 'runtime_versions':runtime_versions()}
-    model=build_model(str(args.backbone_checkpoint) if not args.resume else '',variant=config['model_variant']).to(device)
+    model=build_model(str(args.backbone_checkpoint) if not args.resume else '',
+                      variant=config['model_variant'],
+                      residual_input_mode=config['residual_input_mode']).to(device)
     optimizer=make_optimizer(model,config)
     scheduler=torch.optim.lr_scheduler.CosineAnnealingLR(optimizer,T_max=config['epochs'])
     metadata=model_metadata(model)

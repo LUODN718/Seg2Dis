@@ -1,4 +1,4 @@
-"""Run the prioritized USC12K main, head, RTA and FLR experiments in order."""
+"""Run the automatic two-input comparison or the deferred main ablation queue."""
 import argparse
 import json
 from pathlib import Path
@@ -26,14 +26,15 @@ def main():
     parser.add_argument('--usc_root', required=True, type=Path)
     parser.add_argument('--backbone_checkpoint', required=True, type=Path)
     parser.add_argument('--device', default='cuda:0')
+    parser.add_argument('--queue', choices=('priority', 'manual'), default='priority')
     args = parser.parse_args()
 
     plan = read(ROOT / 'configs/experiments.json')
     rows = {row['id']: row for row in plan['experiments']}
-    queue = plan['priority_queue']
+    queue = plan['priority_queue'] if args.queue == 'priority' else plan['manual_queue']
     if len(queue) != len(set(queue)) or set(queue) - rows.keys():
         raise ValueError('Priority queue contains duplicate or undefined experiments')
-    status_path = args.output / 'queue_status.json'
+    status_path = args.output / f'{args.queue}_queue_status.json'
     results = []
     for index, experiment_id in enumerate(queue, 1):
         row = rows[experiment_id]
@@ -63,8 +64,8 @@ def main():
 
     summary = {'complete': True, 'architecture': plan['architecture'],
                'queue': queue, 'experiments': results}
-    save(args.output / 'summary.json', summary)
-    save(args.output / 'complete.json', summary)
+    save(args.output / f'{args.queue}_summary.json', summary)
+    save(args.output / f'{args.queue}_complete.json', summary)
     save(status_path, {'state': 'complete', 'completed': results, 'count': len(queue)})
 
 

@@ -12,7 +12,8 @@ def model_schema(state):
 def model_metadata(model):
     return {'format_version':FORMAT_VERSION,'architecture':CFG.architecture,
             'model_variant':model.variant,'backbone_name':model.backbone_name,
-            'residual_input_mode':'rgb','model_schema':model_schema(model.state_dict())}
+            'residual_input_mode':model.foreground.residual_input_mode,
+            'model_schema':model_schema(model.state_dict())}
 
 def validate_checkpoint(checkpoint, model=None):
     from models.factory import VARIANTS
@@ -20,8 +21,8 @@ def validate_checkpoint(checkpoint, model=None):
         raise ValueError('Incompatible checkpoint format/architecture; no automatic weight conversion is supported')
     if checkpoint.get('model_variant') not in VARIANTS or checkpoint.get('backbone_name')!='pvt_v2_b2':
         raise ValueError('Unknown checkpoint model variant or backbone')
-    if checkpoint.get('residual_input_mode')!='rgb':
-        raise ValueError('Expected the RGB foreground implementation')
+    if checkpoint.get('residual_input_mode') not in ('rgb','rgb_pm_u'):
+        raise ValueError('Unknown residual input mode')
     state=checkpoint.get('model_state')
     if not isinstance(state,dict) or not state:
         raise ValueError('Checkpoint model_state is missing or empty')
@@ -30,14 +31,18 @@ def validate_checkpoint(checkpoint, model=None):
     if checkpoint.get('model_schema')!=model_schema(state):
         raise ValueError('Checkpoint tensor schema does not match its metadata')
     if model is not None:
-        if model.variant!=checkpoint['model_variant'] or model_schema(model.state_dict())!=checkpoint['model_schema']:
+        if (model.variant!=checkpoint['model_variant'] or
+                model.foreground.residual_input_mode!=checkpoint['residual_input_mode'] or
+                model_schema(model.state_dict())!=checkpoint['model_schema']):
             raise ValueError('Checkpoint does not match the requested model variant/tensor shapes')
 
 def load_model(path, device='cpu'):
     from models import build_model
     state=torch.load(path,map_location='cpu',weights_only=False)
     validate_checkpoint(state)
-    model=build_model(backbone_checkpoint='',backbone_name=state['backbone_name'],variant=state['model_variant'])
+    model=build_model(backbone_checkpoint='',backbone_name=state['backbone_name'],
+                      variant=state['model_variant'],
+                      residual_input_mode=state['residual_input_mode'])
     validate_checkpoint(state,model)
     model.load_state_dict(state['model_state'],strict=True)
     model.to(device).eval()

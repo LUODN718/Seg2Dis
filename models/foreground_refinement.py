@@ -197,8 +197,8 @@ class AdaptiveBoundaryBlock(nn.Module):
         return (dilated - eroded).clamp(0.0, 1.0)
 
 
-class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
-    """The fixed PFRS configuration used by the complete SegDis model."""
+class ForegroundRefinement(ForegroundEncoderDecoder):
+    """Fixed foreground refinement path used by the complete SegDis model."""
 
     CONFIGURATION = "complete"
 
@@ -206,46 +206,49 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
         self,
         backbone_name: str = CFG.backbone_name,
         backbone_checkpoint: Optional[str] = None,
+        residual_input_mode: str = "rgb",
     ):
         super().__init__(
             backbone_name=backbone_name,
             backbone_checkpoint=backbone_checkpoint,
         )
         self.configuration = self.CONFIGURATION
-        self.residual_input_mode = "rgb"
+        if residual_input_mode not in ("rgb", "rgb_pm_u"):
+            raise ValueError(f"Unsupported residual input mode: {residual_input_mode}")
+        self.residual_input_mode = residual_input_mode
         self.use_uncertainty_features = True
         self.semantic_uncertainty_scope = False
 
         self.residual_evidence = ResidualPyramid(
-            CFG.v3_residual_dim,
+            CFG.residual_dim,
             input_channels=5,
         )
         self.scale_blocks = nn.ModuleList(
             [
                 ScaleCorrectionBlock(
                     512,
-                    CFG.v3_residual_dim,
-                    CFG.v3_dim,
+                    CFG.residual_dim,
+                    CFG.foreground_dim,
                     use_uncertainty=True,
                 ),
                 ScaleCorrectionBlock(
                     320,
-                    CFG.v3_residual_dim,
-                    CFG.v3_dim,
+                    CFG.residual_dim,
+                    CFG.foreground_dim,
                     use_uncertainty=True,
                 ),
                 ScaleCorrectionBlock(
                     128,
-                    CFG.v3_residual_dim,
-                    CFG.v3_dim,
+                    CFG.residual_dim,
+                    CFG.foreground_dim,
                     use_uncertainty=True,
                 ),
             ]
         )
         self.boundary_block = AdaptiveBoundaryBlock(
             64,
-            CFG.v3_residual_dim,
-            CFG.v3_dim,
+            CFG.residual_dim,
+            CFG.foreground_dim,
             use_uncertainty=True,
         )
 
@@ -277,8 +280,12 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
         original_features: list[torch.Tensor],
         master_probability: Optional[torch.Tensor] = None,
     ) -> tuple[list[torch.Tensor], dict[str, object]]:
-        del master_probability
-        residual_input = torch.cat([image, foreground_guide, uncertainty], dim=1)
+        if self.residual_input_mode == "rgb_pm_u":
+            if master_probability is None:
+                raise ValueError("P_M guide mode requires the master probability")
+            residual_input = torch.cat([image, master_probability, uncertainty], dim=1)
+        else:
+            residual_input = torch.cat([image, foreground_guide, uncertainty], dim=1)
         return self.residual_evidence(residual_input), {
             "residual_input": residual_input,
             "residual_image": image,
@@ -345,9 +352,9 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
         boxes = []
         for batch_index in range(probability.shape[0]):
             candidate = (
-                probability[batch_index, 0] >= CFG.v3_mask_threshold
+                probability[batch_index, 0] >= CFG.mask_threshold
             ) | (
-                proposal_probability[batch_index, 0] >= CFG.v3_proposal_threshold
+                proposal_probability[batch_index, 0] >= CFG.proposal_threshold
             )
             if candidate.any():
                 positions = candidate.nonzero(as_tuple=False)
@@ -357,16 +364,16 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
                 x2 = positions[:, 1].max().float() + 1.0
                 width = torch.maximum(
                     x2 - x1,
-                    probability.new_tensor(input_width * CFG.v3_roi_min_size),
+                    probability.new_tensor(input_width * CFG.roi_min_size),
                 )
                 height = torch.maximum(
                     y2 - y1,
-                    probability.new_tensor(input_height * CFG.v3_roi_min_size),
+                    probability.new_tensor(input_height * CFG.roi_min_size),
                 )
                 center_x = (x1 + x2) * 0.5
                 center_y = (y1 + y2) * 0.5
-                width = width * (1.0 + 2.0 * CFG.v3_roi_expand_ratio)
-                height = height * (1.0 + 2.0 * CFG.v3_roi_expand_ratio)
+                width = width * (1.0 + 2.0 * CFG.roi_expand_ratio)
+                height = height * (1.0 + 2.0 * CFG.roi_expand_ratio)
                 x1 = (center_x - width * 0.5).clamp(0.0, float(input_width - 1))
                 x2 = (center_x + width * 0.5).clamp(1.0, float(input_width))
                 y1 = (center_y - height * 0.5).clamp(0.0, float(input_height - 1))
@@ -603,7 +610,7 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
                 correction_scope = torch.ones_like(gate)
                 if self.semantic_uncertainty_scope:
                     correction_scope = uncertainty.pow(
-                        CFG.v3_uncertainty_scope_gamma
+                        CFG.uncertainty_scope_gamma
                     )
                     gate = gate * correction_scope
                 reliability = self._scale_reliability(
@@ -634,7 +641,7 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
                         mod_add, mod_remove = modulation
                     modulated_add = add.sigmoid() * mod_add
                     modulated_remove = remove.sigmoid() * mod_remove
-                    correction = correction_lambda * CFG.v3_correction_scales[block_index] * gate
+                    correction = correction_lambda * CFG.correction_scales[block_index] * gate
                     if reliability is not None:
                         correction = correction * reliability
                     correction = correction * (
@@ -648,7 +655,7 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
                         mod_add = mod_remove = torch.ones_like(add)
                     else:
                         mod_add, mod_remove = modulation
-                    correction = correction_lambda * CFG.v3_correction_scales[block_index] * gate
+                    correction = correction_lambda * CFG.correction_scales[block_index] * gate
                     if reliability is not None:
                         correction = correction * reliability
                     correction = correction * (
@@ -696,7 +703,7 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
         sharp_roi_feature = roi_align(
             boundary_result["sharp_feature"],
             boxes,
-            output_size=(CFG.v3_roi_output_size, CFG.v3_roi_output_size),
+            output_size=(CFG.roi_output_size, CFG.roi_output_size),
             spatial_scale=1.0,
             sampling_ratio=2,
             aligned=True,
@@ -814,11 +821,11 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
             * sharp_reliability
         )
 
-        smooth_correction = correction_lambda * CFG.v3_correction_scales[3] * smooth_gate * (
+        smooth_correction = correction_lambda * CFG.correction_scales[3] * smooth_gate * (
             smooth_add_weight * smooth_add_mod * (1.0 - current) * smooth_add.sigmoid()
             - smooth_remove_weight * smooth_remove_mod * current * smooth_remove.sigmoid()
         )
-        sharp_correction = correction_lambda * CFG.v3_correction_scales[3] * sharp_gate_probability * (
+        sharp_correction = correction_lambda * CFG.correction_scales[3] * sharp_gate_probability * (
             sharp_add_weight * sharp_add_mod * (1.0 - current) * sharp_add.sigmoid()
             - sharp_remove_weight * sharp_remove_mod * current * sharp_remove.sigmoid()
         )
@@ -864,7 +871,7 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
                 "uncertainty": uncertainty,
                 "structure_uncertainty": structure_uncertainty,
                 "semantic_correction_scope": (
-                    uncertainty.pow(CFG.v3_uncertainty_scope_gamma)
+                    uncertainty.pow(CFG.uncertainty_scope_gamma)
                     if self.semantic_uncertainty_scope
                     else torch.ones_like(uncertainty)
                 ),

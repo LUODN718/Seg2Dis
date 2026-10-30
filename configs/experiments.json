@@ -1,10 +1,13 @@
 {
   "architecture": "segdis_rgb_v2",
-  "required_training_runs": 14,
+  "required_training_runs": 15,
   "optional_training_runs": 0,
   "multi_seed": false,
   "priority_queue": [
-    "USC12K_SEGDIS",
+    "USC12K_SEGDIS_PM_RGB_U",
+    "USC12K_SEGDIS"
+  ],
+  "manual_queue": [
     "USC12K_SEMANTIC_HEAD",
     "USC12K_PFG_HEAD",
     "USC12K_SEMANTIC_PFG_HEAD",
@@ -16,6 +19,12 @@
     {
       "id": "USC12K_SEGDIS",
       "config": "configs/usc12k/segdis.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_SEGDIS_PM_RGB_U",
+      "config": "configs/usc12k/segdis_pm_rgb_u.json",
       "required": true,
       "state": "pending_training"
     },

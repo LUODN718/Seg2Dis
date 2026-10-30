@@ -21,9 +21,9 @@ features and softmaxes within foreground. Foreground support used for pooling
 is detached. A bounded uncertainty/boundary-weighted correction produces Pu.
 The final BG/SOD/COD probabilities compose Pu with the conditional type scores.
 
-The `v3` tensor prefix is a fixed container name. The actual architecture is
-identified by the version and complete tensor-schema fingerprint, not by a
-filename or checkpoint nickname.
+Model parameter names describe the current SegDis modules. The architecture is
+identified by its architecture metadata and complete tensor-schema fingerprint,
+not by a filename or checkpoint nickname.
 
 All controls are explicit variants in `models/factory.py`: independent FLR,
 no-C semantic allocation, no-RTA, and four ordinary readouts. RTA is the renamed

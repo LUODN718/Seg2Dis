@@ -12,15 +12,15 @@ class Config:
     guide_blur_kernel: int = 7
     guide_gamma: float = 2.0
 
-    v3_dim: int = 96
-    v3_residual_dim: int = 48
-    v3_roi_output_size: int = 48
-    v3_mask_threshold: float = 0.30
-    v3_proposal_threshold: float = 0.35
-    v3_roi_expand_ratio: float = 0.20
-    v3_roi_min_size: float = 0.25
-    v3_correction_scales: tuple[float, float, float, float] = (0.10, 0.15, 0.25, 0.40)
-    v3_uncertainty_scope_gamma: float = 2.0
+    foreground_dim: int = 96
+    residual_dim: int = 48
+    roi_output_size: int = 48
+    mask_threshold: float = 0.30
+    proposal_threshold: float = 0.35
+    roi_expand_ratio: float = 0.20
+    roi_min_size: float = 0.25
+    correction_scales: tuple[float, float, float, float] = (0.10, 0.15, 0.25, 0.40)
+    uncertainty_scope_gamma: float = 2.0
     mean: tuple[float, float, float] = (0.485, 0.456, 0.406)
     std: tuple[float, float, float] = (0.229, 0.224, 0.225)
 

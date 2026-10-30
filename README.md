@@ -33,7 +33,9 @@ P(SOD) = Pu * P(SOD | FG)
 P(COD) = Pu * P(COD | FG)
 ```
 
-The residual encoder consumes `[normalized RGB, foreground guide, uncertainty]`.
+The standard residual encoder consumes `[normalized RGB, foreground guide E,
+uncertainty U]`. `USC12K_SEGDIS_PM_RGB_U` keeps RGB and U and replaces E with the
+detached master probability `P_M`, so both input conditions have five channels.
 `P0` inside a complete SegDis checkpoint is jointly trained. An independent
 foreground-only baseline uses its own `flr` variant and binary supervision;
 there `P0 == Pu` and no SOD/COD type output exists.
