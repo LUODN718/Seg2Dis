@@ -4,6 +4,7 @@ from pathlib import Path
 
 @dataclass
 class Config:
+    architecture: str = "segdis_rgb_v2"
     backbone_name: str = "pvt_v2_b2"
     stage_channels: tuple[int, int, int, int] = (64, 128, 320, 512)
     drop_path_rate: float = 0.1

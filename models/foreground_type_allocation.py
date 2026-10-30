@@ -19,6 +19,7 @@ class SegDis(nn.Module):
         backbone_name: str = CFG.backbone_name,
     ):
         super().__init__()
+        self.architecture = CFG.architecture
         self.v3 = ProgressiveForegroundRefinement(
             backbone_name=backbone_name,
             backbone_checkpoint=backbone_checkpoint,

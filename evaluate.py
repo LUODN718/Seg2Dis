@@ -69,6 +69,7 @@ def main() -> None:
 
     result = {
         "method": "SegDis",
+        "architecture": model.architecture,
         "split": args.split,
         "images": len(dataset),
         "image_size": image_size,

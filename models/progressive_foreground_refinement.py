@@ -24,13 +24,12 @@ class FeatureProjection(nn.Sequential):
 
 
 class ScaleCorrectionBlock(nn.Module):
-    """Full-map correction block used by the released PFRS configuration."""
+    """Refine foreground from image features, RGB guidance and prior context."""
 
     def __init__(
         self,
         original_channels: int,
         residual_channels: int,
-        frequency_channels: int,
         channels: int,
         use_uncertainty: bool = True,
     ):
@@ -38,11 +37,8 @@ class ScaleCorrectionBlock(nn.Module):
         self.use_uncertainty = use_uncertainty
         self.original_projection = FeatureProjection(original_channels, channels)
         self.residual_projection = FeatureProjection(residual_channels, channels)
-        # Legacy checkpoint key: the complete model supplies zeros, never Haar
-        # coefficients. Learned GroupNorm affine terms must still be preserved.
-        self.frequency_projection = ConvGNAct(frequency_channels, channels)
         self.fusion = nn.Sequential(
-            ConvGNAct(channels * 4 + 2, channels),
+            ConvGNAct(channels * 3 + 2, channels),
             ConvGNAct(channels, channels),
         )
         self.add_head = nn.Conv2d(channels, 1, kernel_size=1)
@@ -61,13 +57,11 @@ class ScaleCorrectionBlock(nn.Module):
         self,
         original_feature: torch.Tensor,
         residual_feature: torch.Tensor,
-        frequency_feature: torch.Tensor,
         current_probability: torch.Tensor,
         previous_feature: Optional[torch.Tensor],
     ) -> dict[str, torch.Tensor]:
         target_size = original_feature.shape[-2:]
         residual = self.residual_projection(residual_feature)
-        frequency = self.frequency_projection(frequency_feature)
         original = self.original_projection(original_feature)
         if previous_feature is None:
             previous = original.new_zeros(original.shape)
@@ -89,7 +83,7 @@ class ScaleCorrectionBlock(nn.Module):
             uncertainty = torch.zeros_like(uncertainty)
         feature = self.fusion(
             torch.cat(
-                [original, residual, frequency, previous, probability, uncertainty],
+                [original, residual, previous, probability, uncertainty],
                 dim=1,
             )
         )
@@ -135,10 +129,7 @@ class AdaptiveBoundaryBlock(nn.Module):
         self.use_uncertainty = use_uncertainty
         self.original_projection = FeatureProjection(original_channels, channels)
         self.residual_projection = FeatureProjection(residual_channels, channels)
-        # These checkpoint-compatible projections also receive only zeros.
-        self.smooth_frequency = ConvGNAct(3, channels)
-        self.sharp_frequency = ConvGNAct(3, channels)
-        base_channels = channels * 4 + 3
+        base_channels = channels * 3 + 3
         self.smooth_body = nn.Sequential(
             ConvGNAct(base_channels, channels),
             ConvGNAct(channels, channels),
@@ -162,7 +153,6 @@ class AdaptiveBoundaryBlock(nn.Module):
         self,
         original_feature: torch.Tensor,
         residual_feature: torch.Tensor,
-        frequency_feature: torch.Tensor,
         current_probability: torch.Tensor,
         previous_feature: torch.Tensor,
     ) -> dict[str, torch.Tensor]:
@@ -186,12 +176,8 @@ class AdaptiveBoundaryBlock(nn.Module):
             uncertainty = torch.zeros_like(uncertainty)
         boundary = self._boundary(probability)
         common = [original, residual, previous, probability, uncertainty, boundary]
-        smooth = self.smooth_body(
-            torch.cat(common[:3] + [self.smooth_frequency(frequency_feature[:, :3])] + common[3:], dim=1)
-        )
-        sharp = self.sharp_body(
-            torch.cat(common[:3] + [self.sharp_frequency(frequency_feature[:, 1:])] + common[3:], dim=1)
-        )
+        smooth = self.smooth_body(torch.cat(common, dim=1))
+        sharp = self.sharp_body(torch.cat(common, dim=1))
         router = torch.softmax(
             self.router(torch.cat([smooth, sharp, probability, uncertainty, boundary], dim=1)),
             dim=1,
@@ -239,21 +225,18 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
                 ScaleCorrectionBlock(
                     512,
                     CFG.v3_residual_dim,
-                    1,
                     CFG.v3_dim,
                     use_uncertainty=True,
                 ),
                 ScaleCorrectionBlock(
                     320,
                     CFG.v3_residual_dim,
-                    3,
                     CFG.v3_dim,
                     use_uncertainty=True,
                 ),
                 ScaleCorrectionBlock(
                     128,
                     CFG.v3_residual_dim,
-                    3,
                     CFG.v3_dim,
                     use_uncertainty=True,
                 ),
@@ -269,10 +252,6 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
     @property
     def use_residual(self) -> bool:
         return True
-
-    @property
-    def use_frequency(self) -> bool:
-        return False
 
     @property
     def use_gate(self) -> bool:
@@ -597,16 +576,9 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
             correction_inputs.append(torch.logit(current.clamp(1e-5, 1.0 - 1e-5)))
             scale_block = self.scale_blocks[block_index]
             scale_feature = refinement_features[feature_index]
-            # Preserve the released checkpoint's zero-input projection weights.
-            frequency_feature = scale_feature.new_zeros(
-                scale_feature.shape[0],
-                scale_block.frequency_projection[0].in_channels,
-                *scale_feature.shape[-2:],
-            )
             result = scale_block(
                 scale_feature,
                 correction_residual_features[feature_index],
-                frequency_feature,
                 current,
                 previous_feature,
             )
@@ -706,13 +678,9 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
 
         correction_inputs.append(torch.logit(current))
         boundary_feature = refinement_features[0]
-        boundary_frequency = boundary_feature.new_zeros(
-            boundary_feature.shape[0], 4, *boundary_feature.shape[-2:]
-        )
         boundary_result = self.boundary_block.forward_features(
             boundary_feature,
             correction_residual_features[0],
-            boundary_frequency,
             current,
             previous_feature,
         )

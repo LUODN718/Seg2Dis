@@ -26,6 +26,11 @@ def main():
                         help='Use the configured Git credential helper for this private repository')
     args = parser.parse_args()
     manifest = json.loads((ROOT / 'benchmarks/rgb_release.json').read_text(encoding='utf-8'))
+    if manifest.get('status') != 'trained_release' or not manifest.get('sha256') or not manifest.get('url'):
+        raise RuntimeError(
+            'No trained segdis_rgb_v2 checkpoint has been published. Train the current '
+            'architecture first; the historical RGB release belongs to the previous structure.'
+        )
     if args.output.exists():
         if sha256(args.output) != manifest['sha256']:
             raise ValueError('Existing file has a different hash; choose a different --output')

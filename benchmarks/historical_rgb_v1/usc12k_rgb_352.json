@@ -262,5 +262,8 @@
         "CSCS": 0.0
       }
     }
-  }
+  },
+  "architecture": "segdis_rgb_v1",
+  "record_status": "historical; does not describe segdis_rgb_v2",
+  "applies_to_current_architecture": false
 }

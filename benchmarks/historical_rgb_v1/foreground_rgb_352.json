@@ -241,5 +241,8 @@
       "Fbeta_w": 0.8230669123413881
     }
   },
-  "probability_root": "C:\\Users\\lixianfeng\\Desktop\\SegDis\\outputs\\paper_ablation_pfrs_rgb_erased_20261020\\rgb\\foreground_probabilities"
+  "probability_root": "C:\\Users\\lixianfeng\\Desktop\\SegDis\\outputs\\paper_ablation_pfrs_rgb_erased_20261020\\rgb\\foreground_probabilities",
+  "architecture": "segdis_rgb_v1",
+  "record_status": "historical; does not describe segdis_rgb_v2",
+  "applies_to_current_architecture": false
 }

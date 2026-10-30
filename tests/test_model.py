@@ -47,7 +47,7 @@ class ModelTests(unittest.TestCase):
     def test_only_complete_pfrs_configuration_is_exposed(self):
         self.assertEqual(self.model.v3.configuration, "complete")
         self.assertTrue(self.model.v3.use_residual)
-        self.assertFalse(self.model.v3.use_frequency)
+        self.assertFalse(hasattr(self.model.v3, "use_frequency"))
         self.assertFalse(self.model.v3.use_gate)
         self.assertTrue(self.model.v3.coarse_stages_are_context_only)
         self.assertNotIn("frequency_features", self.output)
@@ -64,37 +64,50 @@ class ModelTests(unittest.TestCase):
         self.assertFalse(any("haar" in type(module).__name__.lower()
                              for module in self.model.modules()))
 
-    def test_compatibility_projections_receive_only_zeros(self):
-        observed = []
-        projections = [block.frequency_projection for block in self.model.v3.scale_blocks]
-        projections.extend([self.model.v3.boundary_block.smooth_frequency,
-                            self.model.v3.boundary_block.sharp_frequency])
+    def test_removed_branches_and_fusion_channels(self):
+        for name, _ in self.model.named_modules():
+            self.assertNotIn("frequency", name.lower())
+            self.assertNotIn("haar", name.lower())
+        for key in self.model.state_dict():
+            self.assertNotIn("frequency", key.lower())
+            self.assertNotIn("haar", key.lower())
+        for block in self.model.v3.scale_blocks:
+            channels = block.original_projection[0].out_channels
+            self.assertEqual(block.fusion[0][0].in_channels, 3 * channels + 2)
+        block = self.model.v3.boundary_block
+        channels = block.original_projection[0].out_channels
+        self.assertEqual(block.smooth_body[0][0].in_channels, 3 * channels + 3)
+        self.assertEqual(block.sharp_body[0][0].in_channels, 3 * channels + 3)
 
-        def check_input(module, inputs):
-            observed.append(int(torch.count_nonzero(inputs[0])))
+    def test_training_loss_backward_is_finite(self):
+        from train import compute_loss
 
-        handles = [module.register_forward_pre_hook(check_input) for module in projections]
-        try:
-            with torch.inference_mode():
-                self.model(torch.randn(1, 3, 64, 64))
-        finally:
-            for handle in handles:
-                handle.remove()
-        self.assertEqual(observed, [0] * 5)
-
-    def test_zero_input_projection_can_have_learned_constant_output(self):
-        from models.foreground_components import ConvGNAct
-
-        projection = ConvGNAct(3, 16).eval()
-        with torch.no_grad():
-            projection[1].bias.fill_(0.5)
-        with torch.inference_mode():
-            result = projection(torch.zeros(1, 3, 8, 8))
-        self.assertTrue((result > 0).all())
+        self.model.zero_grad(set_to_none=True)
+        batch = {"image": torch.randn(1, 3, 64, 64),
+                 "semantic": torch.randint(0, 3, (1, 64, 64))}
+        loss, _ = compute_loss(self.model, batch, torch.device("cpu"), 0.5, 0.5)
+        self.assertTrue(torch.isfinite(loss))
+        loss.backward()
+        gradients = {name: param.grad for name, param in self.model.named_parameters()
+                     if param.grad is not None}
+        self.assertTrue(gradients)
+        self.assertTrue(all(torch.isfinite(grad).all() for grad in gradients.values()))
+        self.assertIsNotNone(self.model.v3.scale_blocks[0].fusion[0][0].weight.grad)
+        self.assertIsNotNone(self.model.query.grad)
+        self.model.zero_grad(set_to_none=True)
 
     def test_complete_configuration_metadata(self):
-        validate_checkpoint({"variant": "SEGDIS_RGB_RESIDUAL", "residual_input_mode": "rgb"})
-        validate_checkpoint({"variant": "B4", "residual_input_mode": "rgb"})
+        metadata = {"architecture": "segdis_rgb_v2", "residual_input_mode": "rgb"}
+        validate_checkpoint({**metadata, "variant": "SEGDIS_RGB_RESIDUAL"})
+        validate_checkpoint({**metadata, "variant": "B4"})
+        for variant, mode in (("B0", "rgb"), ("SEGDIS_RGB_RESIDUAL", "erased")):
+            with self.assertRaises(ValueError):
+                validate_checkpoint({**metadata, "variant": variant, "residual_input_mode": mode})
+        with self.assertRaises(ValueError):
+            validate_checkpoint({**metadata, "variant": "SEGDIS_RGB_RESIDUAL",
+                                 "model_state": {"v3.scale_blocks.0.frequency_projection.0.weight": torch.zeros(1)}})
+        with self.assertRaises(ValueError):
+            validate_checkpoint({"variant": "SEGDIS_RGB_RESIDUAL", "residual_input_mode": "rgb"})
         with self.assertRaises(ValueError):
             validate_checkpoint({"variant": "B4"})
         with self.assertRaises(ValueError):

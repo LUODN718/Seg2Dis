@@ -29,7 +29,7 @@ def main():
     validate_checkpoint(source)
     model = build_model(backbone_checkpoint='')
     model.load_state_dict(source['model_state'], strict=True)
-    exported = {key: source[key] for key in ('model_state', 'epoch', 'variant',
+    exported = {key: source[key] for key in ('model_state', 'epoch', 'variant', 'architecture',
                 'residual_input_mode', 'backbone_name', 'image_size', 'type_weight', 'calibration_weight')}
     exported['source_checkpoint_sha256'] = digest(args.source)
     destination = Path(args.output)
@@ -40,10 +40,11 @@ def main():
     for key, value in source['model_state'].items():
         torch.testing.assert_close(value, loaded['model_state'][key], rtol=0, atol=0)
     manifest = {
-        'model': 'complete SegDis-RGB', 'tag': 'rgb-v1-20261026',
+        'model': 'complete SegDis-RGB', 'architecture': source['architecture'],
+        'status': 'packaged_not_published', 'tag': None,
         'asset': destination.name, 'sha256': digest(destination),
         'source_checkpoint_sha256': exported['source_checkpoint_sha256'],
-        'url': 'https://github.com/LUODN718/SegDis/releases/download/rgb-v1-20261026/' + destination.name,
+        'url': None,
         'selected_epoch': source['epoch'], 'backbone': source['backbone_name'],
         'residual_input': '[normalized original RGB, E, U]',
         'parameter_count': sum(p.numel() for p in model.parameters()),

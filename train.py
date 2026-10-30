@@ -125,6 +125,7 @@ def main() -> None:
             "optimizer_state": optimizer.state_dict(),
             "scheduler_state": scheduler.state_dict(),
             "variant": "SEGDIS_RGB_RESIDUAL",
+            "architecture": model.architecture,
             "residual_input_mode": "rgb",
             "backbone_name": args.backbone_name,
             "image_size": args.image_size,

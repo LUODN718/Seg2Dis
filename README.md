@@ -29,8 +29,15 @@ required at inference time.
 - **Mixed-scene parsing:** SegDis directly predicts background, SOD, and COD in
   USC12K scenes where salient and camouflaged objects coexist.
 
-This branch releases **SegDis with PVT-v2-B2**: 28.80M total parameters,
-`352 x 352` input, and a complete training, inference, and evaluation pipeline.
+This branch contains the current **SegDis-RGB v2** architecture with PVT-v2-B2
+and `352 x 352` input (**28,376,678 parameters**). The five historical zero-input projection branches and
+their fusion input channels have been deleted entirely. No replacement constant
+branches are introduced.
+
+**Checkpoint and results status:** this structural revision has not yet been
+trained or benchmarked. The `rgb-v1-20261026` checkpoint and earlier reported
+metrics belong to the previous architecture and are not current-model results.
+The current loader rejects those weights, including training resume.
 
 ## Quick Start
 
@@ -47,21 +54,12 @@ The supplied Conda environment targets NVIDIA CUDA 12.1. The model-based
 training, inference, and evaluation entry points require CUDA; saved-prediction
 evaluation also runs on CPU, including macOS.
 
-### 2. Download the checkpoint
+### 2. Obtain a current-architecture checkpoint
 
-```bash
-python scripts/download_checkpoint.py --use_git_credentials \
-  --output checkpoints/segdis_pvtb2_352.pth
-```
-
-For the current private repository, this uses your configured Git credential
-helper. You need repository access. Alternatively, download the asset from the
-[checkpoint release](https://github.com/LUODN718/SegDis/releases/tag/rgb-v1-20261026)
-or use an existing `GITHUB_TOKEN` / `GH_TOKEN` environment variable with
-the downloader without `--use_git_credentials`. Do not put tokens in source
-files. The command above verifies the asset and saves it to
-`checkpoints/segdis_pvtb2_352.pth`. For manual downloads, use this filename
-to follow the examples below.
+No trained `segdis_rgb_v2` checkpoint is published yet. Follow [Training](#training)
+to train the current architecture from an ImageNet-pretrained backbone and use
+`outputs/segdis/best.pth` for prediction. The downloader reports the pending
+release rather than downloading incompatible historical weights.
 
 ### 3. Export predictions
 
@@ -70,7 +68,7 @@ Prepare [USC12K](#data), replace the dataset path, and run:
 ```bash
 python infer.py \
   --usc_root /path/to/VOC-USC12K \
-  --checkpoint checkpoints/segdis_pvtb2_352.pth \
+  --checkpoint outputs/segdis/best.pth \
   --split Scene-C \
   --output predictions/segdis/Scene-C \
   --format color \
@@ -133,68 +131,24 @@ correction updates foreground confidence before probability composition.
 
 ## Results on USC12K
 
-SegDis results below were recomputed from 3,600 raw three-class predictions
-using the public USCNet evaluation rules at `352 x 352`, without Scene-A/B
-remapping. USCNet values are literature results, not a local reproduction.
+Results for the current `segdis_rgb_v2` architecture are **pending training and
+full-dataset evaluation**. Removing the projection branches changes the learned
+computation, so the old scores cannot be attributed to this model.
 
-All values below are percentages; higher is better except for CSCS.
-
-| Method | FG-mIoU ↑ | mIoU ↑ | mAcc ↑ | IoU-S ↑ | IoU-C ↑ | CSCS ↓ |
-|---|---:|---:|---:|---:|---:|---:|
-| USCNet | 68.46 | 78.03 | **87.92** | 75.57 | 61.34 | 7.49 |
-| **SegDis (PVT-v2-B2)** | **68.983** | **78.351** | 85.945 | **75.663** | **62.304** | **5.752** |
-
-The checkpoint contains **28,803,590 parameters** and was selected at
-epoch 50 by minimum mean training loss, without validation-based selection.
-USCNet scores are reported in the
-[original paper](https://openaccess.thecvf.com/content/ICCV2025/papers/Zhou_Rethinking_Detecting_Salient_and_Camouflaged_Objects_in_Unconstrained_Scenes_ICCV_2025_paper.pdf).
-Small differences are not a claim of statistical significance.
-
-| Scene | Ground-truth foreground | IoU-BG ↑ | IoU-S ↑ | IoU-C ↑ | CSCS ↓ |
-|---|---|---:|---:|---:|---:|
-| A | SOD only | 96.947 | 83.139 | 0.000 | 45.589 |
-| B | COD only | 95.402 | 0.000 | 69.788 | 18.579 |
-| C | SOD and COD | 95.804 | 71.612 | 51.487 | 11.822 |
-| D | Background only | 99.835 | 0.000 | 0.000 | 0.000 |
-
-Absent-type IoUs are zero when that type is falsely predicted. Scene-D has
-background false positives despite CSCS=0. Overall scores use the sum of all
-four scene confusion matrices, not the average of scene scores. Exact results
-and confusion counts are in
-[the USC12K result record](benchmarks/usc12k_rgb_352.json).
-CSCS uses predicted-class denominators, so it should be interpreted together
-with class IoUs and foreground coverage, not as a direct foreground swap rate.
-
-<details>
-<summary>Earlier results and evaluation correction</summary>
-
-Earlier results (68.791 FG-mIoU, 78.231 mIoU, 5.945 CSCS) belong to a
-different checkpoint and are not the release above.
-
-**Evaluation correction:** earlier reported `71.820 FG-mIoU / 80.250 mIoU /
-3.275 CSCS` used scene-aware remapping: all foreground became SOD in Scene-A
-and COD in Scene-B. Those values are not comparable to USCNet's raw three-class
-evaluation and are superseded by the table above. No scene remapping is
-supported by the canonical evaluators. Scene-C/D predictions are unaffected.
-
-</details>
+Earlier raw three-class USC12K results and binary foreground measurements are
+retained under [historical_rgb_v1](benchmarks/historical_rgb_v1/README.md) with
+explicit architecture labels. They document the previous experiments only.
+The canonical evaluation protocol below remains unchanged.
 
 ## Qualitative Results
 
-The examples below show ground truth, predicted SOD/COD labels, and overlays
-on the original images.
-
-<p align="center">
-  <img src="assets/paper_qualitative.png" alt="USC12K qualitative results" width="100%">
-</p>
-
-Red denotes SOD, green denotes COD, and black denotes background.
-These retained manuscript examples are qualitative illustrations, not a new
-benchmark evaluation of the released checkpoint.
+Current-model qualitative results are pending. Previous manuscript predictions
+are documented with the [historical records](benchmarks/historical_rgb_v1/README.md)
+and are not presented as outputs of this revised architecture.
 
 ## Installation
 
-The reported experiments used Python 3.10.20, PyTorch 2.5.1, CUDA 12.1,
+The historical experiments used Python 3.10.20, PyTorch 2.5.1, CUDA 12.1,
 torchvision 0.20.1, timm 1.0.28, NumPy 2.0.1, and Pillow 11.1.0.
 
 See [Quick Start](#quick-start) for the Conda setup. Alternatively, install
@@ -226,7 +180,7 @@ VOC-USC12K/
 ```
 
 Labels use `0 = background`, `1 = SOD`, and `2 = COD`; the loader also handles
-the black/red/green label colors. The release uses 8,400 training images and
+the black/red/green label colors. The standard split contains 8,400 training images and
 3,600 evaluation images, with 900 images per evaluation scene. Dataset files
 are not bundled with this repository.
 
@@ -263,12 +217,13 @@ L = L_foreground + 0.5 * L_type + 0.5 * L_composed
 where the type loss is evaluated on annotated foreground pixels and the
 composed loss supervises the final three-class probabilities.
 
-The released protocol uses AdamW, weight decay `5e-4`, cosine learning-rate
+The configured training protocol uses AdamW, weight decay `5e-4`, cosine learning-rate
 decay, gradient clipping at `5.0`, and seed `42`; see
-[the training record](benchmarks/training_protocol.json).
+[the historical training record](benchmarks/historical_rgb_v1/training_protocol.json).
+New checkpoints carry `architecture=segdis_rgb_v2`; historical checkpoints cannot
+be used for `--resume` because both model and optimizer structures changed.
 `best.pth` minimizes the epoch-average training objective. `latest.pth` also
-stores optimizer, scheduler, and RNG state for `--resume`. The downloadable
-inference checkpoint omits those states and is not an exact-resume checkpoint.
+stores optimizer, scheduler, and RNG state for `--resume`. An inference-only export omits those states and is not an exact-resume checkpoint.
 
 ## Evaluation
 
@@ -368,70 +323,48 @@ requirements.txt                     Python dependencies
 environment.yml                      Conda environment
 ```
 
-`main` exposes one complete SegDis-RGB configuration and its reproducible
-pipeline. The training and checkpoint-loading entry points do not expose
-historical ablations or erased-input variants. The checkpoint keeps its
-`v3.*` state-dictionary prefix so the published weights load unchanged. The
-complete PFRS configuration supplies zero frequency input; it does not compute
-Haar frequency maps or return the old frequency diagnostics. The historical
-Haar implementation, erased-image model, and their unused configuration fields
-have been removed from the source, including construction of discarded modules.
-The remaining `frequency_projection`, `smooth_frequency`, and `sharp_frequency`
-names are legacy checkpoint keys for Conv–GroupNorm–SiLU projections fed only
-zeros. They do not extract image frequency information. Their learned GroupNorm
-affine terms can produce nonzero constant outputs, so they are retained rather
-than silently changing the released model's predictions.
-`B4` in checkpoint metadata identifies the complete configuration, **not** a
-PVT-v2-B4 backbone. The default encoder is PVT-v2-B2.
+`main` exposes one complete SegDis-RGB v2 configuration and its pipeline.
+PFRS uses image features, RGB foreground guidance, previous-stage context and
+probability/uncertainty maps. All five historical projection modules, their
+zero-input tensors, function arguments, and fusion input channels are removed.
+The scale fusion receives `3 * C + 2` channels, and each boundary fusion receives
+`3 * C + 3` channels. No renamed substitute or stored constant branch is used.
 
-Removing construction of discarded historical modules changes random-number
-consumption during initialization. Loaded checkpoint predictions are preserved;
-fresh training with the same seed need not reproduce the historical trajectory.
+The existing `v3.*` state-dictionary prefix is retained as a container name;
+`architecture=segdis_rgb_v2` identifies the actual structure. Old weights have
+removed keys and differently shaped fusion tensors, and are rejected. `B4` in
+historical variant metadata refers to a complete model, not a PVT-v2-B4 encoder.
+The default encoder remains PVT-v2-B2.
 
 Dataset files, checkpoints, predictions, logs, and local experiment outputs belong outside
 version control and are excluded by `.gitignore`.
 
 ## Checkpoints and Reproducibility
 
-| Item | Reference |
+| Item | Status / reference |
 |---|---|
-| Complete SegDis weights | [Checkpoint release](https://github.com/LUODN718/SegDis/releases/tag/rgb-v1-20261026) |
-| Asset and integrity information | [Release manifest](benchmarks/rgb_release.json) |
-| USC12K counts and metrics | [Raw three-class results](benchmarks/usc12k_rgb_352.json) |
-| Binary foreground measurements | [PFRS / corrected foreground results](benchmarks/foreground_rgb_352.json) |
-| Training configuration | [Training protocol](benchmarks/training_protocol.json) |
-| Implementation equivalence check | [Verification record](benchmarks/release_verification.json) |
-| Source cleanup and zero-input checks | [Cleanup verification](benchmarks/source_cleanup_verification.json) |
+| Current architecture | `segdis_rgb_v2` |
+| Trained current-model checkpoint | Pending |
+| Current-model USC12K and foreground metrics | Pending |
+| Release status | [Current manifest](benchmarks/rgb_release.json) |
+| Structural verification | [Architecture checks](benchmarks/architecture_verification.json) |
+| Previous experiment records | [Explicitly historical records](benchmarks/historical_rgb_v1/README.md) |
 
-Follow [Quick Start](#quick-start) to download the weights. Pass the complete
-checkpoint to `--checkpoint` in inference, evaluation, and intermediate export.
-All selected model tensors are preserved exactly; dataset files and ImageNet
-backbone weights are not bundled. Credentials are not saved in the repository
-or forwarded to redirected asset hosts by the downloader.
-
-The loader checks checkpoint metadata for compatibility. Historical
-checkpoints with a different input path are not interchangeable with this release.
-Source and published asset hashes are in
-[the release manifest](benchmarks/rgb_release.json).
-
-The release implementation was checked against the frozen experiment
-using one real 352x352 image per USC12K scene. Probabilities, foreground logits,
-type logits and residual inputs match within 1e-6; all four final label maps
-match stored experiment predictions exactly. This checks implementation
-equivalence; it is not a fresh full-dataset benchmark.
+Current checkpoints must include `architecture=segdis_rgb_v2`,
+`residual_input_mode=rgb`, and the complete-configuration variant. Training,
+inference, evaluation and export use the same model and strict state loading.
+There is no automatic old-weight conversion or constant compensation. After
+training, recompute all paper metrics from the new checkpoint and update the
+release manifest; the old result tables are not evidence for this revision.
 
 ```bash
 python -m unittest discover -s tests -v
 ```
 
-These model and evaluation regression tests run on CPU without downloading
-pretrained weights. They check implementation behavior, not benchmark accuracy.
-The source-cleanup verification additionally checks the released RGB checkpoint
-hash, exact state keys/shapes, five zero-input compatibility projections, and
-exact outputs against the previous Git revision on one real image per scene.
-Reproduce it with `scripts/verify_source_cleanup.py --checkpoint <RGB-checkpoint>
---reference_commit <revision-from-report> --usc_root <USC12K-root>
---saved_predictions <original-prediction-root> --report <output-json>`.
+The CPU tests check output probabilities, removal of branch parameters and
+fusion channels, training-loss backward propagation, current checkpoint
+metadata, rejection of historical weights, and the fixed evaluation protocol.
+These checks verify implementation behavior rather than benchmark accuracy.
 
 ## Citation
 

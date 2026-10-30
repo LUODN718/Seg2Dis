@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import torch
 
+from config import CFG
 from .foreground_type_allocation import SegDis
 
 
@@ -19,6 +20,15 @@ def three_class_probability(output: dict[str, torch.Tensor | object]) -> torch.T
 
 
 def validate_checkpoint(checkpoint: dict) -> None:
+    if checkpoint.get("architecture") != CFG.architecture:
+        raise ValueError(
+            f"Expected architecture='{CFG.architecture}'. Historical RGB weights "
+            "contain removed projection branches and incompatible fusion tensors; "
+            "they cannot be loaded or resumed as the current model."
+        )
+    state = checkpoint.get("model_state", {})
+    if any("frequency" in key.lower() or "haar" in key.lower() for key in state):
+        raise ValueError("Checkpoint contains removed projection parameters")
     if checkpoint.get("residual_input_mode") != "rgb":
         raise ValueError(
             "This release loads complete SegDis-RGB checkpoints only. "

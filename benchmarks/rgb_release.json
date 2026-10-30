@@ -1,14 +1,17 @@
 {
   "model": "complete SegDis-RGB",
-  "tag": "rgb-v1-20261026",
-  "asset": "segdis_rgb_pvtb2_352.pth",
-  "api_asset_url": "https://api.github.com/repos/LUODN718/SegDis/releases/assets/676945680",
-  "sha256": "5bbba0bb0e71cf57aeddec09ccd895c105db1c1999b1bc580293e24952fbf2ec",
-  "source_checkpoint_sha256": "53eea0f1ec3a8521090132a30ecd6bf86020376511a7b4c85069f8783eee20d3",
-  "url": "https://github.com/LUODN718/SegDis/releases/download/rgb-v1-20261026/segdis_rgb_pvtb2_352.pth",
-  "selected_epoch": 50,
+  "architecture": "segdis_rgb_v2",
+  "status": "awaiting_training_and_evaluation",
   "backbone": "pvt_v2_b2",
-  "residual_input": "[normalized original RGB, E, U]",
-  "parameter_count": 28803590,
-  "contents": "Exact model tensors and inference metadata; optimizer and RNG omitted"
+  "image_size": 352,
+  "parameter_count": 28376678,
+  "tag": null,
+  "asset": null,
+  "sha256": null,
+  "url": null,
+  "api_asset_url": null,
+  "historical_release": "historical_rgb_v1/rgb_release.json",
+  "change": "Five zero-input projection branches and their fusion input channels were deleted",
+  "checkpoint_compatibility": "Old checkpoints do not load strictly; no automatic conversion or constant substitution",
+  "metrics": null
 }

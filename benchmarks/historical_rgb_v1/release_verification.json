@@ -53,5 +53,8 @@
       "matches_saved_prediction": true
     }
   ],
-  "scope": "One real case from each scene; not a fresh full-dataset benchmark"
+  "scope": "One real case from each scene; not a fresh full-dataset benchmark",
+  "architecture": "segdis_rgb_v1",
+  "record_status": "historical; does not describe segdis_rgb_v2",
+  "applies_to_current_architecture": false
 }

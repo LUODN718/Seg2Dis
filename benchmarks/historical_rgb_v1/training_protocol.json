@@ -15,5 +15,8 @@
   "scheduler": "CosineAnnealingLR",
   "gradient_clip": 5.0,
   "selection": "minimum mean training objective; no validation/test selection",
-  "residual_input_mode": "rgb"
+  "residual_input_mode": "rgb",
+  "architecture": "segdis_rgb_v1",
+  "record_status": "historical; does not describe segdis_rgb_v2",
+  "applies_to_current_architecture": false
 }

@@ -1,0 +1,116 @@
+{
+  "architecture": "segdis_rgb_v2",
+  "device": "CPU",
+  "torch_version": "2.7.1+cu118",
+  "parameter_count": 28376678,
+  "previous_parameter_count": 28803590,
+  "removed_parameter_count": 426912,
+  "removed_projection_module_count": 5,
+  "removed_state_tensor_count": 15,
+  "removed_projection_state_keys": [
+    "v3.boundary_block.sharp_frequency.0.weight",
+    "v3.boundary_block.sharp_frequency.1.bias",
+    "v3.boundary_block.sharp_frequency.1.weight",
+    "v3.boundary_block.smooth_frequency.0.weight",
+    "v3.boundary_block.smooth_frequency.1.bias",
+    "v3.boundary_block.smooth_frequency.1.weight",
+    "v3.scale_blocks.0.frequency_projection.0.weight",
+    "v3.scale_blocks.0.frequency_projection.1.bias",
+    "v3.scale_blocks.0.frequency_projection.1.weight",
+    "v3.scale_blocks.1.frequency_projection.0.weight",
+    "v3.scale_blocks.1.frequency_projection.1.bias",
+    "v3.scale_blocks.1.frequency_projection.1.weight",
+    "v3.scale_blocks.2.frequency_projection.0.weight",
+    "v3.scale_blocks.2.frequency_projection.1.bias",
+    "v3.scale_blocks.2.frequency_projection.1.weight"
+  ],
+  "fusion_weight_shapes": {
+    "v3.scale_blocks.0.fusion.0.0.weight": {
+      "old": [
+        96,
+        386,
+        3,
+        3
+      ],
+      "current": [
+        96,
+        290,
+        3,
+        3
+      ]
+    },
+    "v3.scale_blocks.1.fusion.0.0.weight": {
+      "old": [
+        96,
+        386,
+        3,
+        3
+      ],
+      "current": [
+        96,
+        290,
+        3,
+        3
+      ]
+    },
+    "v3.scale_blocks.2.fusion.0.0.weight": {
+      "old": [
+        96,
+        386,
+        3,
+        3
+      ],
+      "current": [
+        96,
+        290,
+        3,
+        3
+      ]
+    },
+    "v3.boundary_block.smooth_body.0.0.weight": {
+      "old": [
+        96,
+        387,
+        3,
+        3
+      ],
+      "current": [
+        96,
+        291,
+        3,
+        3
+      ]
+    },
+    "v3.boundary_block.sharp_body.0.0.weight": {
+      "old": [
+        96,
+        387,
+        3,
+        3
+      ],
+      "current": [
+        96,
+        291,
+        3,
+        3
+      ]
+    }
+  },
+  "branch_module_count_current": 0,
+  "branch_state_tensor_count_current": 0,
+  "replacement_constant_branches": false,
+  "historical_checkpoint_rejected": true,
+  "current_checkpoint_roundtrip_strict_load": true,
+  "forward_shape": [
+    1,
+    3,
+    352,
+    352
+  ],
+  "probabilities_finite_and_normalized": true,
+  "unit_tests_passed": 14,
+  "training_loss_backward_verified": true,
+  "weights_used_for_forward": "random initialization, seed 42",
+  "trained_current_checkpoint_available": false,
+  "scope": "Structural, forward, backward and checkpoint checks; not benchmark accuracy"
+}
