@@ -1,0 +1,102 @@
+{
+  "architecture": "segdis_rgb_v2",
+  "required_training_runs": 14,
+  "optional_training_runs": 0,
+  "multi_seed": false,
+  "priority_queue": [
+    "USC12K_SEGDIS",
+    "USC12K_PFG_HEAD",
+    "USC12K_SEMANTIC_PFG_HEAD",
+    "USC12K_DECODER_HEAD",
+    "USC12K_SEMANTIC_HEAD",
+    "USC12K_SEGDIS_NO_FBRC",
+    "USC12K_FLR"
+  ],
+  "deferred_queue": ["FLR_SOD", "FLR_COD", "FLR_JOINT"],
+  "experiments": [
+    {
+      "id": "USC12K_SEGDIS",
+      "config": "configs/usc12k/segdis.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_SEGDIS_NO_CORRECTION",
+      "config": "configs/usc12k/segdis_no_correction.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_SEGDIS_NO_FBRC",
+      "config": "configs/usc12k/segdis_no_fbrc.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_PFG_HEAD",
+      "config": "configs/usc12k/pfg_head.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_SEMANTIC_PFG_HEAD",
+      "config": "configs/usc12k/semantic_pfg_head.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_DECODER_HEAD",
+      "config": "configs/usc12k/decoder_head.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_SEMANTIC_HEAD",
+      "config": "configs/usc12k/semantic_head.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "USC12K_FLR",
+      "config": "configs/usc12k/flr.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "SEGDIS_SOD",
+      "config": "configs/tasks/segdis_sod.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "FLR_SOD",
+      "config": "configs/tasks/flr_sod.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "SEGDIS_COD",
+      "config": "configs/tasks/segdis_cod.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "FLR_COD",
+      "config": "configs/tasks/flr_cod.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "SEGDIS_JOINT",
+      "config": "configs/tasks/segdis_joint.json",
+      "required": true,
+      "state": "pending_training"
+    },
+    {
+      "id": "FLR_JOINT",
+      "config": "configs/tasks/flr_joint.json",
+      "required": true,
+      "state": "pending_training"
+    }
+  ]
+}

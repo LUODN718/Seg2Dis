@@ -17,6 +17,8 @@ class SegDis(nn.Module):
         self,
         backbone_checkpoint: str | None = None,
         backbone_name: str = CFG.backbone_name,
+        correction_enabled: bool = True,
+        relation_conditioning: bool = True,
     ):
         super().__init__()
         self.architecture = CFG.architecture
@@ -31,12 +33,13 @@ class SegDis(nn.Module):
             nn.GroupNorm(8, hidden), nn.SiLU(inplace=True),
         )
         self.query = nn.Parameter(torch.randn(2, hidden) * 0.02)
-        self.query_condition = nn.Sequential(
-            # Predict an independent scene-conditioned offset for each type
-            # query.  A shared offset would cancel in the subsequent two-way
-            # softmax and therefore could not affect SOD/COD allocation.
-            nn.Linear(hidden * 3 + 1, hidden * 2), nn.LayerNorm(hidden * 2), nn.SiLU()
-        )
+        self.relation_conditioning = bool(relation_conditioning)
+        if self.relation_conditioning:
+            self.query_condition = nn.Sequential(
+                # Predict an independent scene-conditioned offset for each type
+                # query. A shared offset would cancel in the two-way softmax.
+                nn.Linear(hidden * 3 + 1, hidden * 2), nn.LayerNorm(hidden * 2), nn.SiLU()
+            )
         self.local_projection = nn.Conv2d(hidden, hidden, 1, bias=False)
         self.type_temperature = nn.Parameter(torch.tensor(1.0))
         self.correction = nn.Sequential(
@@ -47,6 +50,9 @@ class SegDis(nn.Module):
         nn.init.zeros_(self.correction[-1].weight)
         nn.init.zeros_(self.correction[-1].bias)
         self.correction_limit = float(correction_limit)
+        self.correction_enabled = bool(correction_enabled)
+        if not self.correction_enabled:
+            del self.correction
 
     @staticmethod
     def _masked_pool(feature: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
@@ -73,9 +79,13 @@ class SegDis(nn.Module):
         # hijacking V3's foreground discovery path.
         fg = self._masked_pool(semantic_feature, pfg.detach())
         bg = self._masked_pool(semantic_feature, 1.0 - pfg.detach())
-        relation = torch.cat([fg, bg, (fg - bg).abs(), F.cosine_similarity(fg, bg, dim=1, eps=1e-6)[:, None]], 1)
-        query_offset = self.query_condition(relation).view(-1, 2, self.query.shape[1])
-        conditioned_query = self.query[None] + query_offset
+        if self.relation_conditioning:
+            relation = torch.cat([fg, bg, (fg - bg).abs(), F.cosine_similarity(fg, bg, dim=1, eps=1e-6)[:, None]], 1)
+            query_offset = self.query_condition(relation).view(-1, 2, self.query.shape[1])
+            conditioned_query = self.query[None] + query_offset
+        else:
+            relation = semantic_feature.new_zeros((semantic_feature.shape[0], self.query.shape[1] * 3 + 1))
+            conditioned_query = self.query[None].expand(semantic_feature.shape[0], -1, -1)
         local = self.local_projection(semantic_feature)
         type_logits = torch.einsum("bqc,bchw->bqhw", conditioned_query, local)
         type_logits = type_logits / self.type_temperature.abs().clamp_min(0.25)
@@ -84,7 +94,8 @@ class SegDis(nn.Module):
         uncertainty = 4.0 * pfg * (1.0 - pfg)
         boundary = self._boundary(pfg)
         correction_input = torch.cat([local, uncertainty, boundary, type_probability[:, 0:1] - type_probability[:, 1:2]], 1)
-        correction = self.correction(correction_input).tanh() * self.correction_limit
+        correction = (self.correction(correction_input).tanh() * self.correction_limit
+                      if self.correction_enabled else torch.zeros_like(base_logit))
         correction_scope = (0.5 * uncertainty + 0.5 * boundary).detach()
         union_logit = base_logit + correction_scope * correction
         union_probability = union_logit.sigmoid()
@@ -106,4 +117,6 @@ class SegDis(nn.Module):
             "semantic_bg_vector": bg,
             "semantic_relation": relation,
             "semantic_correction": correction,
+            "P0": pfg,
+            "Pu": union_probability,
         }

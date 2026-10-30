@@ -1,0 +1,10 @@
+{
+  "architecture": "segdis_rgb_v2",
+  "model_variant": "segdis",
+  "status": "awaiting_training_and_evaluation",
+  "parameter_count": 28376678,
+  "checkpoint": null,
+  "sha256": null,
+  "url": null,
+  "metrics": null
+}

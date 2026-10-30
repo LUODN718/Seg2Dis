@@ -1,0 +1,13 @@
+{
+  "architecture": "segdis_rgb_v2",
+  "parameter_count": 28376678,
+  "frequency_or_haar_modules": 0,
+  "unit_tests_passed": 14,
+  "experiment_configs_preflighted": 14,
+  "classic_evaluation_datasets_preflighted": 9,
+  "actual_352px_optimizer_step": "passed",
+  "strict_checkpoint_roundtrip": "passed",
+  "saved_prediction_metric_match": "passed",
+  "trained_checkpoint_available": false,
+  "benchmark_accuracy_verified": false
+}

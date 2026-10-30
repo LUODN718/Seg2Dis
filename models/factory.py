@@ -1,42 +1,37 @@
-"""Model construction and checkpoint validation for SegDis."""
-
-from __future__ import annotations
-
-import torch
-
+"""One model registry; no imports from another checkout or implicit checkpoint."""
 from config import CFG
 from .foreground_type_allocation import SegDis
+from .readouts import ForegroundOnly, DirectReadout
 
+VARIANTS = ('segdis', 'segdis_no_correction', 'segdis_no_fbrc', 'flr', 'pfg_head',
+            'semantic_pfg_head', 'decoder_head', 'semantic_head')
 
-def build_model(
-    backbone_checkpoint: str | None = None,
-    backbone_name: str = "pvt_v2_b2",
-) -> SegDis:
-    return SegDis(backbone_checkpoint, backbone_name=backbone_name)
+def build_model(backbone_checkpoint=None, backbone_name='pvt_v2_b2', variant='segdis'):
+    if backbone_name != 'pvt_v2_b2':
+        raise ValueError('Current experiments use the fixed PVT-v2-B2 encoder')
+    if variant == 'segdis':
+        model = SegDis(backbone_checkpoint, backbone_name)
+    elif variant == 'segdis_no_correction':
+        model = SegDis(backbone_checkpoint, backbone_name, correction_enabled=False)
+    elif variant == 'segdis_no_fbrc':
+        model = SegDis(backbone_checkpoint, backbone_name, correction_enabled=False,
+                       relation_conditioning=False)
+    elif variant == 'flr':
+        model = ForegroundOnly(backbone_checkpoint)
+    elif variant in VARIANTS:
+        model = DirectReadout(variant, backbone_checkpoint)
+    else:
+        raise ValueError(f'Unknown model variant: {variant}')
+    model.architecture = CFG.architecture
+    model.variant = variant
+    model.backbone_name = backbone_name
+    return model
 
+def three_class_probability(output):
+    if 'three_class_probability' not in output:
+        raise ValueError('A binary foreground model has no SOD/COD type probabilities')
+    return output['three_class_probability']
 
-def three_class_probability(output: dict[str, torch.Tensor | object]) -> torch.Tensor:
-    return output["three_class_probability"]
-
-
-def validate_checkpoint(checkpoint: dict) -> None:
-    if checkpoint.get("architecture") != CFG.architecture:
-        raise ValueError(
-            f"Expected architecture='{CFG.architecture}'. Historical RGB weights "
-            "contain removed projection branches and incompatible fusion tensors; "
-            "they cannot be loaded or resumed as the current model."
-        )
-    state = checkpoint.get("model_state", {})
-    if any("frequency" in key.lower() or "haar" in key.lower() for key in state):
-        raise ValueError("Checkpoint contains removed projection parameters")
-    if checkpoint.get("residual_input_mode") != "rgb":
-        raise ValueError(
-            "This release loads complete SegDis-RGB checkpoints only. "
-            "Expected residual_input_mode='rgb'; do not load historical erased-input weights."
-        )
-    stored = str(checkpoint.get("variant", "")).upper()
-    if stored not in {"B4", "SEGDIS_RGB_RESIDUAL"}:
-        raise ValueError(
-            "The main branch accepts complete SegDis checkpoints only "
-            f"(B4 or SEGDIS_RGB_RESIDUAL), got: {stored or 'missing variant'}"
-        )
+def validate_checkpoint(checkpoint, model=None):
+    from utils.checkpoint import validate_checkpoint as validate
+    return validate(checkpoint, model)

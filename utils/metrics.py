@@ -52,6 +52,7 @@ class SegmentationMetric:
         iou_values = [number(value) for value in iou]
         return {
             "confusion_matrix": hist.long().tolist(),
+            "pixel_partition": pixel_partition(hist.long().tolist()),
             "pixel_accuracy": number(pixel_accuracy),
             "iou": iou_values,
             "miou": number(miou),
@@ -74,3 +75,18 @@ class SegmentationMetric:
                 "CSCS": None if cscs.isnan() else float(cscs * 100),
             },
         }
+
+
+def pixel_partition(matrix):
+    result = {}
+    for name, classes in (("SOD", (1,)), ("COD", (2,)), ("foreground", (1, 2))):
+        total = sum(sum(matrix[c]) for c in classes)
+        correct = sum(matrix[c][c] for c in classes)
+        swapped = sum(matrix[c][3-c] for c in classes)
+        missed = sum(matrix[c][0] for c in classes)
+        assert correct + swapped + missed == total
+        result[name] = {"GT_pixels": total, "correct_pixels": correct,
+                        "swapped_pixels": swapped, "missed_background_pixels": missed,
+                        **{key+"_percent": value/total*100 if total else None
+                           for key,value in (("correct",correct),("swapped",swapped),("missed_background",missed))}}
+    return result

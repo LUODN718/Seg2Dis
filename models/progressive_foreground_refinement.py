@@ -272,27 +272,27 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
     def _build_residual_features(
         self,
         image: torch.Tensor,
-        erase_mask: torch.Tensor,
+        foreground_guide: torch.Tensor,
         uncertainty: torch.Tensor,
         original_features: list[torch.Tensor],
         master_probability: Optional[torch.Tensor] = None,
     ) -> tuple[list[torch.Tensor], dict[str, object]]:
         del master_probability
-        residual_input = torch.cat([image, erase_mask, uncertainty], dim=1)
+        residual_input = torch.cat([image, foreground_guide, uncertainty], dim=1)
         return self.residual_evidence(residual_input), {
             "residual_input": residual_input,
             "residual_image": image,
         }
 
-    def _build_erase_mask(
+    def _build_foreground_guide(
         self,
         master_probability: torch.Tensor,
         uncertainty: torch.Tensor,
     ) -> torch.Tensor:
         del uncertainty
         return self._average_blur(
-            master_probability.pow(CFG.erase_gamma),
-            CFG.erase_blur_kernel,
+            master_probability.pow(CFG.guide_gamma),
+            CFG.guide_blur_kernel,
         ).clamp(0.0, 1.0)
 
     @staticmethod
@@ -547,10 +547,10 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
             uncertainty,
         )
         self._active_structure_uncertainty = structure_uncertainty
-        erase_mask = self._build_erase_mask(detached_master, uncertainty)
+        foreground_guide = self._build_foreground_guide(detached_master, uncertainty)
         residual_features, residual_diagnostics = self._build_residual_features(
             image,
-            erase_mask,
+            foreground_guide,
             uncertainty,
             original_features,
             master_probability=detached_master,
@@ -860,7 +860,7 @@ class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
                 "proposal_logit": proposal_logit,
                 "router": router,
                 "roi_boxes": boxes,
-                "erase_mask": erase_mask,
+                "foreground_guide": foreground_guide,
                 "uncertainty": uncertainty,
                 "structure_uncertainty": structure_uncertainty,
                 "semantic_correction_scope": (

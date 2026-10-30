@@ -1,85 +1,50 @@
-"""Export raw three-class SegDis predictions, at 352x352 by default."""
-
-from __future__ import annotations
-
+"""Export USC12K predictions through the same strict model loader as evaluation."""
 import argparse
 from pathlib import Path
-
 import numpy as np
-import torch
-import torch.nn.functional as F
 from PIL import Image
+import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
 from dataset_usc12k import USC12KDataset
-from models import build_model, three_class_probability, validate_checkpoint
+from utils.checkpoint import load_model
+from utils.runtime import atomic_save,resolve_device
 
+def save_prediction(probability,sample_id,output,mode):
+    output=Path(output);output.mkdir(parents=True,exist_ok=True)
+    label=probability.argmax(0).detach().cpu().numpy().astype(np.uint8)
+    if mode=='label': Image.fromarray(label).save(output/f'{sample_id}.png')
+    elif mode=='color':
+        palette=np.array([[0,0,0],[255,0,0],[0,255,0]],dtype=np.uint8)
+        Image.fromarray(palette[label]).save(output/f'{sample_id}.png')
+    else: raise ValueError(f'Unknown three-class export format: {mode}')
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser("Run SegDis inference on a USC12K split")
-    parser.add_argument("--usc_root", required=True)
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--backbone_name", default=None, choices=("pvt_v2_b2", "pvt_v2_b3"))
-    parser.add_argument("--split", default="Scene-C")
-    parser.add_argument("--output", required=True)
-    parser.add_argument("--image_size", type=int, default=352)
-    parser.add_argument("--format", choices=("label", "color", "separate", "all"), default="color")
-    parser.add_argument(
-        "--original_size",
-        action="store_true",
-        help="Save predictions at original image resolution; default is the model input size.",
-    )
-    parser.add_argument("--gpu", type=int, default=0)
-    return parser.parse_args()
-
-
-def save_prediction(probability: torch.Tensor, sample_id: str, output: Path, mode: str) -> None:
-    label = probability.argmax(dim=0).cpu().numpy().astype(np.uint8)
-    if mode in {"label", "all"}:
-        Image.fromarray(label, mode="L").save(output / f"{sample_id}.png")
-    if mode in {"separate", "all"}:
-        Image.fromarray((label == 1).astype(np.uint8) * 255, mode="L").save(output / f"{sample_id}_sod.png")
-        Image.fromarray((label == 2).astype(np.uint8) * 255, mode="L").save(output / f"{sample_id}_cod.png")
-    if mode in {"color", "all"}:
-        color = np.zeros((*label.shape, 3), dtype=np.uint8)
-        color[label == 1] = (255, 0, 0)
-        color[label == 2] = (0, 255, 0)
-        name = f"{sample_id}_color.png" if mode == "all" else f"{sample_id}.png"
-        Image.fromarray(color, mode="RGB").save(output / name)
-
-
-def main() -> None:
-    args = parse_args()
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required for inference")
-    device = torch.device(f"cuda:{args.gpu}")
-    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    validate_checkpoint(checkpoint)
-    image_size = args.image_size or int(checkpoint.get("image_size", 352))
-    backbone_name = args.backbone_name or checkpoint.get("backbone_name", "pvt_v2_b2")
-    model = build_model(backbone_name=backbone_name).to(device)
-    model.load_state_dict(checkpoint.get("model_state", checkpoint), strict=True)
-    model.eval()
-
-    dataset = USC12KDataset(args.usc_root, args.split, image_size, training=False)
-    loader = DataLoader(dataset, batch_size=1, shuffle=False, num_workers=0)
-    output_dir = Path(args.output)
-    output_dir.mkdir(parents=True, exist_ok=True)
+def main():
+    p=argparse.ArgumentParser(__doc__)
+    p.add_argument('--checkpoint',required=True,type=Path);p.add_argument('--usc_root',required=True,type=Path)
+    p.add_argument('--split',default='val',choices=('val','Scene-A','Scene-B','Scene-C','Scene-D'))
+    p.add_argument('--output',required=True,type=Path)
+    p.add_argument('--format',default='color',choices=('color','label','binary'))
+    p.add_argument('--save_probabilities',action='store_true')
+    p.add_argument('--device',default='auto')
+    args=p.parse_args();device=resolve_device(args.device)
+    if device.type=='cpu':torch.set_num_threads(2)
+    model,state,identity=load_model(args.checkpoint,device);del state
+    if model.variant=='flr' and args.format!='binary':
+        raise ValueError('FLR has no type output; select --format binary')
+    args.output.mkdir(parents=True,exist_ok=True)
+    dataset=USC12KDataset(args.usc_root,args.split,352,training=False)
     with torch.inference_mode():
-        for batch in tqdm(loader, desc=f"SegDis {args.split}"):
-            output = model(batch["image"].to(device))
-            probability = three_class_probability(output)
-            if args.original_size:
-                height = int(batch["original_size"][0][0])
-                width = int(batch["original_size"][1][0])
-                probability = F.interpolate(
-                    probability, size=(height, width), mode="bilinear", align_corners=False
-                )
-            probability = probability[0]
-            save_prediction(probability, batch["sample_id"][0], output_dir, args.format)
-    print(f"[Saved] {args.split} predictions to {output_dir.resolve()}")
+        for batch in tqdm(DataLoader(dataset,batch_size=1,shuffle=False,num_workers=0),desc=args.split):
+            output=model(batch['image'].to(device));sid=batch['sample_id'][0]
+            if not torch.isfinite(output['Pu']).all():raise FloatingPointError('Nonfinite foreground probability')
+            if args.format=='binary':
+                Image.fromarray((output['Pu'][0,0].cpu().numpy()>=0.5).astype(np.uint8)*255).save(args.output/f'{sid}.png')
+            else: save_prediction(output['three_class_probability'][0],sid,args.output,args.format)
+            if args.save_probabilities:
+                folder=args.output/'probabilities';folder.mkdir(exist_ok=True)
+                np.savez_compressed(folder/f'{sid}.npz',P0=output['P0'][0,0].cpu().numpy(),Pu=output['Pu'][0,0].cpu().numpy())
+    atomic_save(args.output/'identity.json',{'identity':identity,'split':args.split,'format':args.format,
+                'image_size':352,'images':len(dataset),'scene_remapping':False})
 
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':main()
