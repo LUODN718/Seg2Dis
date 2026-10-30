@@ -352,7 +352,7 @@ models/
   factory.py                         Model construction and checkpoint validation
   foreground_type_allocation.py      Complete SegDis / FBRC
   progressive_foreground_refinement.py  Fixed PFRS configuration
-  master_residual_net.py             Shared encoder, Master Decoder, residual blocks
+  foreground_components.py          Shared encoder, Master Decoder, RGB guidance encoder
 utils/                               Foreground loss and canonical evaluation
 tests/                               Model and evaluation regression tests
 scripts/                             Checkpoint tools and Windows launchers
@@ -373,10 +373,20 @@ pipeline. The training and checkpoint-loading entry points do not expose
 historical ablations or erased-input variants. The checkpoint keeps its
 `v3.*` state-dictionary prefix so the published weights load unchanged. The
 complete PFRS configuration supplies zero frequency input; it does not compute
-Haar frequency maps or return the old frequency diagnostics. Fixed zero-input
-projection weights remain for exact compatibility with the released checkpoint.
+Haar frequency maps or return the old frequency diagnostics. The historical
+Haar implementation, erased-image model, and their unused configuration fields
+have been removed from the source, including construction of discarded modules.
+The remaining `frequency_projection`, `smooth_frequency`, and `sharp_frequency`
+names are legacy checkpoint keys for Conv–GroupNorm–SiLU projections fed only
+zeros. They do not extract image frequency information. Their learned GroupNorm
+affine terms can produce nonzero constant outputs, so they are retained rather
+than silently changing the released model's predictions.
 `B4` in checkpoint metadata identifies the complete configuration, **not** a
 PVT-v2-B4 backbone. The default encoder is PVT-v2-B2.
+
+Removing construction of discarded historical modules changes random-number
+consumption during initialization. Loaded checkpoint predictions are preserved;
+fresh training with the same seed need not reproduce the historical trajectory.
 
 Dataset files, checkpoints, predictions, logs, and local experiment outputs belong outside
 version control and are excluded by `.gitignore`.
@@ -391,6 +401,7 @@ version control and are excluded by `.gitignore`.
 | Binary foreground measurements | [PFRS / corrected foreground results](benchmarks/foreground_rgb_352.json) |
 | Training configuration | [Training protocol](benchmarks/training_protocol.json) |
 | Implementation equivalence check | [Verification record](benchmarks/release_verification.json) |
+| Source cleanup and zero-input checks | [Cleanup verification](benchmarks/source_cleanup_verification.json) |
 
 Follow [Quick Start](#quick-start) to download the weights. Pass the complete
 checkpoint to `--checkpoint` in inference, evaluation, and intermediate export.
@@ -415,6 +426,12 @@ python -m unittest discover -s tests -v
 
 These model and evaluation regression tests run on CPU without downloading
 pretrained weights. They check implementation behavior, not benchmark accuracy.
+The source-cleanup verification additionally checks the released RGB checkpoint
+hash, exact state keys/shapes, five zero-input compatibility projections, and
+exact outputs against the previous Git revision on one real image per scene.
+Reproduce it with `scripts/verify_source_cleanup.py --checkpoint <RGB-checkpoint>
+--reference_commit <revision-from-report> --usc_root <USC12K-root>
+--saved_predictions <original-prediction-root> --report <output-json>`.
 
 ## Citation
 

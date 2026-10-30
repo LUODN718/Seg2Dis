@@ -6,20 +6,11 @@ from pathlib import Path
 class Config:
     backbone_name: str = "pvt_v2_b2"
     stage_channels: tuple[int, int, int, int] = (64, 128, 320, 512)
-    image_size: int = 384
-    num_classes: int = 1
     drop_path_rate: float = 0.1
 
     master_dim: int = 128
-    residual_dim: int = 48
-    refine_dim: int = 96
-    frequency_dim: int = 24
     erase_blur_kernel: int = 7
-    erase_fill_kernel: int = 15
     erase_gamma: float = 2.0
-    correction_scale: float = 2.0
-    correction_gate_floors: tuple[float, float, float, float] = (0.10, 0.25, 0.50, 1.0)
-    residual_gate_init_bias: float = -4.0
 
     v3_dim: int = 96
     v3_residual_dim: int = 48
@@ -30,11 +21,6 @@ class Config:
     v3_roi_min_size: float = 0.25
     v3_correction_scales: tuple[float, float, float, float] = (0.10, 0.15, 0.25, 0.40)
     v3_uncertainty_scope_gamma: float = 2.0
-    boundary_band_kernel: int = 7
-    boundary_high_frequency_kernel: int = 3
-    boundary_high_frequency_gain: float = 4.0
-    error_evidence_weight: float = 0.1
-    error_evidence_kernel: int = 31
     mean: tuple[float, float, float] = (0.485, 0.456, 0.406)
     std: tuple[float, float, float] = (0.229, 0.224, 0.225)
 

@@ -53,6 +53,45 @@ class ModelTests(unittest.TestCase):
         self.assertNotIn("frequency_features", self.output)
         self.assertNotIn("sharpness_target", self.output)
 
+    def test_no_historical_haar_components(self):
+        from models import foreground_components
+
+        self.assertFalse(hasattr(foreground_components, "HaarFrequencyContext"))
+        self.assertFalse(hasattr(foreground_components, "RefinementBlock"))
+        self.assertFalse(hasattr(self.model.v3, "refinement_blocks"))
+        self.assertFalse(hasattr(self.model.v3, "residual_pyramid"))
+        self.assertFalse(hasattr(self.model.v3, "missing_head"))
+        self.assertFalse(any("haar" in type(module).__name__.lower()
+                             for module in self.model.modules()))
+
+    def test_compatibility_projections_receive_only_zeros(self):
+        observed = []
+        projections = [block.frequency_projection for block in self.model.v3.scale_blocks]
+        projections.extend([self.model.v3.boundary_block.smooth_frequency,
+                            self.model.v3.boundary_block.sharp_frequency])
+
+        def check_input(module, inputs):
+            observed.append(int(torch.count_nonzero(inputs[0])))
+
+        handles = [module.register_forward_pre_hook(check_input) for module in projections]
+        try:
+            with torch.inference_mode():
+                self.model(torch.randn(1, 3, 64, 64))
+        finally:
+            for handle in handles:
+                handle.remove()
+        self.assertEqual(observed, [0] * 5)
+
+    def test_zero_input_projection_can_have_learned_constant_output(self):
+        from models.foreground_components import ConvGNAct
+
+        projection = ConvGNAct(3, 16).eval()
+        with torch.no_grad():
+            projection[1].bias.fill_(0.5)
+        with torch.inference_mode():
+            result = projection(torch.zeros(1, 3, 8, 8))
+        self.assertTrue((result > 0).all())
+
     def test_complete_configuration_metadata(self):
         validate_checkpoint({"variant": "SEGDIS_RGB_RESIDUAL", "residual_input_mode": "rgb"})
         validate_checkpoint({"variant": "B4", "residual_input_mode": "rgb"})

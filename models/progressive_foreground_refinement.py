@@ -6,9 +6,9 @@ import torch.nn.functional as F
 from torchvision.ops import roi_align
 
 from config import CFG
-from .master_residual_net import (
+from .foreground_components import (
     ConvGNAct,
-    MasterResidualNet,
+    ForegroundEncoderDecoder,
     ResidualPyramid,
     _group_count,
 )
@@ -38,6 +38,8 @@ class ScaleCorrectionBlock(nn.Module):
         self.use_uncertainty = use_uncertainty
         self.original_projection = FeatureProjection(original_channels, channels)
         self.residual_projection = FeatureProjection(residual_channels, channels)
+        # Legacy checkpoint key: the complete model supplies zeros, never Haar
+        # coefficients. Learned GroupNorm affine terms must still be preserved.
         self.frequency_projection = ConvGNAct(frequency_channels, channels)
         self.fusion = nn.Sequential(
             ConvGNAct(channels * 4 + 2, channels),
@@ -133,6 +135,7 @@ class AdaptiveBoundaryBlock(nn.Module):
         self.use_uncertainty = use_uncertainty
         self.original_projection = FeatureProjection(original_channels, channels)
         self.residual_projection = FeatureProjection(residual_channels, channels)
+        # These checkpoint-compatible projections also receive only zeros.
         self.smooth_frequency = ConvGNAct(3, channels)
         self.sharp_frequency = ConvGNAct(3, channels)
         base_channels = channels * 4 + 3
@@ -208,7 +211,7 @@ class AdaptiveBoundaryBlock(nn.Module):
         return (dilated - eroded).clamp(0.0, 1.0)
 
 
-class ProgressiveForegroundRefinement(MasterResidualNet):
+class ProgressiveForegroundRefinement(ForegroundEncoderDecoder):
     """The fixed PFRS configuration used by the complete SegDis model."""
 
     CONFIGURATION = "complete"
@@ -221,15 +224,11 @@ class ProgressiveForegroundRefinement(MasterResidualNet):
         super().__init__(
             backbone_name=backbone_name,
             backbone_checkpoint=backbone_checkpoint,
-            detach_erase_mask=True,
         )
         self.configuration = self.CONFIGURATION
         self.residual_input_mode = "rgb"
         self.use_uncertainty_features = True
         self.semantic_uncertainty_scope = False
-        del self.residual_pyramid
-        del self.refinement_blocks
-        del self.missing_head
 
         self.residual_evidence = ResidualPyramid(
             CFG.v3_residual_dim,
@@ -282,20 +281,6 @@ class ProgressiveForegroundRefinement(MasterResidualNet):
     @property
     def coarse_stages_are_context_only(self) -> bool:
         return True
-
-    @staticmethod
-    def _zero_residual_features(
-        original_features: list[torch.Tensor],
-    ) -> list[torch.Tensor]:
-        return [
-            feature.new_zeros(
-                feature.shape[0],
-                CFG.v3_residual_dim,
-                feature.shape[-2],
-                feature.shape[-1],
-            )
-            for feature in original_features
-        ]
 
     @staticmethod
     def _average_blur(tensor: torch.Tensor, kernel: int) -> torch.Tensor:
