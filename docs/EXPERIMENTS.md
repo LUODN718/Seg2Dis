@@ -2,9 +2,10 @@
 
 All definitions are in `configs/`; every model uses the same clean foreground
 implementation. There are **14 required training runs** for the retained study.
-The priority queue starts with the main SegDis result, then classification-head
-controls, RTA ablation, and USC12K FLR-only control. Independent FLR SOD/COD/Joint
-runs are deferred. A configuration file does not imply a running job.
+The priority queue starts with the main SegDis result, then H(F), H(PFG),
+H(F,PFG), the existing H(Fdec) FLR ablation with full RTA, and the no-FBRC RTA
+ablation with full FLR. USC12K FLR-only and independent FLR SOD/COD/Joint runs
+remain deferred. A configuration file does not imply a running job.
 
 | ID / configuration | Training | Budget | Role |
 |---|---|---|---|
@@ -61,8 +62,8 @@ retrained or silently loaded into this repository's model.
 
 The automatic training queue is:
 
-`FSPNet-SFViT -> USC12K_SEGDIS -> USC12K_PFG_HEAD -> USC12K_SEMANTIC_PFG_HEAD -> USC12K_DECODER_HEAD -> USC12K_SEMANTIC_HEAD -> USC12K_SEGDIS_NO_FBRC -> USC12K_FLR`.
+`FSPNet-SFViT -> USC12K_SEGDIS -> USC12K_SEMANTIC_HEAD -> USC12K_PFG_HEAD -> USC12K_SEMANTIC_PFG_HEAD -> USC12K_DECODER_HEAD -> USC12K_SEGDIS_NO_FBRC`.
 
-The remaining required runs, including task-specific SegDis models and
-independent FLR SOD/COD/Joint, stay deferred until this priority queue finishes.
+The remaining required runs, including USC12K FLR-only, task-specific SegDis,
+and independent FLR SOD/COD/Joint, stay deferred until this priority queue finishes.
 The full endpoint is trained once and reused rather than counted again in tables.

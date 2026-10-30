@@ -5,14 +5,13 @@
   "multi_seed": false,
   "priority_queue": [
     "USC12K_SEGDIS",
+    "USC12K_SEMANTIC_HEAD",
     "USC12K_PFG_HEAD",
     "USC12K_SEMANTIC_PFG_HEAD",
     "USC12K_DECODER_HEAD",
-    "USC12K_SEMANTIC_HEAD",
-    "USC12K_SEGDIS_NO_FBRC",
-    "USC12K_FLR"
+    "USC12K_SEGDIS_NO_FBRC"
   ],
-  "deferred_queue": ["FLR_SOD", "FLR_COD", "FLR_JOINT"],
+  "deferred_queue": ["USC12K_FLR", "FLR_SOD", "FLR_COD", "FLR_JOINT"],
   "experiments": [
     {
       "id": "USC12K_SEGDIS",
