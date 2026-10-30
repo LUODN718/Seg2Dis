@@ -9,7 +9,7 @@
     "USC12K_PFG_HEAD",
     "USC12K_SEMANTIC_PFG_HEAD",
     "USC12K_DECODER_HEAD",
-    "USC12K_SEGDIS_NO_FBRC"
+    "USC12K_SEGDIS_NO_RTA"
   ],
   "deferred_queue": ["USC12K_FLR", "FLR_SOD", "FLR_COD", "FLR_JOINT"],
   "experiments": [
@@ -26,8 +26,8 @@
       "state": "pending_training"
     },
     {
-      "id": "USC12K_SEGDIS_NO_FBRC",
-      "config": "configs/usc12k/segdis_no_fbrc.json",
+      "id": "USC12K_SEGDIS_NO_RTA",
+      "config": "configs/usc12k/segdis_no_rta.json",
       "required": true,
       "state": "pending_training"
     },

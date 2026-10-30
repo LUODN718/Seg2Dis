@@ -26,9 +26,9 @@ identified by the version and complete tensor-schema fingerprint, not by a
 filename or checkpoint nickname.
 
 All controls are explicit variants in `models/factory.py`: independent FLR,
-no-C semantic allocation, no-FBRC, and four ordinary readouts. The requested
-RTA ablation corresponds to the original FBRC module and removes both
-foreground/background relation-conditioned queries and bounded foreground
-correction. No-C separately omits only the correction module.
+no-C semantic allocation, no-RTA, and four ordinary readouts. RTA is the renamed
+former FBRC module. The RTA ablation removes both foreground/background
+relation-conditioned queries and bounded foreground correction. No-C separately
+omits only the correction module.
 Direct heads use the predeclared S3/PFG/decoder inputs and foreground auxiliary
 loss; they do not silently reuse a full model's predictions.

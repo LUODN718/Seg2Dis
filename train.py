@@ -29,7 +29,7 @@ def compute_objective(output,batch,variant,task,device,type_weight=0.5,calibrati
     zero=fg.new_zeros(())
     terms={'fg':fg,'ce':zero,'type':zero,'composed':zero}
     if variant=='flr': loss=fg
-    elif variant in ('segdis','segdis_no_correction','segdis_no_fbrc'):
+    elif variant in ('segdis','segdis_no_correction','segdis_no_rta'):
         valid=target>0
         if bool(valid.any()):
             terms['type']=F.cross_entropy(output['semantic_logits'].permute(0,2,3,1)[valid],(target[valid]==2).long())

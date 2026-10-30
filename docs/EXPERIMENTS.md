@@ -3,16 +3,16 @@
 All definitions are in `configs/`; every model uses the same clean foreground
 implementation. There are **14 required training runs** for the retained study.
 The priority queue starts with the main SegDis result, then H(F), H(PFG),
-H(F,PFG), the existing H(Fdec) FLR ablation with full RTA, and the no-FBRC RTA
+H(F,PFG), the existing H(Fdec) FLR ablation with full RTA, and the RTA
 ablation with full FLR. USC12K FLR-only and independent FLR SOD/COD/Joint runs
 remain deferred. A configuration file does not imply a running job.
 
 | ID / configuration | Training | Budget | Role |
 |---|---|---|---|
 | USC12K_SEGDIS | USC12K | 50 epochs / 352 | Shared complete endpoint for all tables |
-| USC12K_PFG_HEAD | USC12K | 50 / 352 | B0 / H(PFG), reused across framework and FBRC tables |
+| USC12K_PFG_HEAD | USC12K | 50 / 352 | B0 / H(PFG), reused across framework and RTA tables |
 | USC12K_SEGDIS_NO_CORRECTION | USC12K | 50 / 352 | B1: relation-conditioned type allocation without C |
-| USC12K_SEGDIS_NO_FBRC | USC12K | 50 / 352 | RTA/FBRC ablation: removes relation-conditioned queries and bounded foreground correction |
+| USC12K_SEGDIS_NO_RTA | USC12K | 50 / 352 | RTA ablation (formerly FBRC): removes relation-conditioned queries and bounded foreground correction |
 | USC12K_SEMANTIC_PFG_HEAD | USC12K | 50 / 352 | H(F,PFG), F fixed to encoder S3 |
 | USC12K_DECODER_HEAD | USC12K | 50 / 352 | H(Fdec), smooth96 + restored sharp-ROI96 |
 | USC12K_SEMANTIC_HEAD | USC12K | 50 / 352 | H(F): S3-only ordinary three-class head |
@@ -62,7 +62,7 @@ retrained or silently loaded into this repository's model.
 
 The automatic training queue is:
 
-`FSPNet-SFViT -> USC12K_SEGDIS -> USC12K_SEMANTIC_HEAD -> USC12K_PFG_HEAD -> USC12K_SEMANTIC_PFG_HEAD -> USC12K_DECODER_HEAD -> USC12K_SEGDIS_NO_FBRC`.
+`FSPNet-SFViT -> USC12K_SEGDIS -> USC12K_SEMANTIC_HEAD -> USC12K_PFG_HEAD -> USC12K_SEMANTIC_PFG_HEAD -> USC12K_DECODER_HEAD -> USC12K_SEGDIS_NO_RTA`.
 
 The remaining required runs, including USC12K FLR-only, task-specific SegDis,
 and independent FLR SOD/COD/Joint, stay deferred until this priority queue finishes.

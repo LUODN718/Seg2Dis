@@ -52,7 +52,7 @@ class ModelTests(unittest.TestCase):
                     self.assertFalse(hasattr(model,'correction'))
                     with torch.no_grad():out=model(self.image)
                     self.assertTrue(torch.equal(out['P0'],out['Pu']))
-                if variant=='segdis_no_fbrc':
+                if variant=='segdis_no_rta':
                     self.assertFalse(hasattr(model,'query_condition'))
                     self.assertFalse(hasattr(model,'correction'))
                     self.assertFalse(model.relation_conditioning)

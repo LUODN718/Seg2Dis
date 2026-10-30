@@ -3,7 +3,7 @@ from config import CFG
 from .foreground_type_allocation import SegDis
 from .readouts import ForegroundOnly, DirectReadout
 
-VARIANTS = ('segdis', 'segdis_no_correction', 'segdis_no_fbrc', 'flr', 'pfg_head',
+VARIANTS = ('segdis', 'segdis_no_correction', 'segdis_no_rta', 'flr', 'pfg_head',
             'semantic_pfg_head', 'decoder_head', 'semantic_head')
 
 def build_model(backbone_checkpoint=None, backbone_name='pvt_v2_b2', variant='segdis'):
@@ -13,7 +13,7 @@ def build_model(backbone_checkpoint=None, backbone_name='pvt_v2_b2', variant='se
         model = SegDis(backbone_checkpoint, backbone_name)
     elif variant == 'segdis_no_correction':
         model = SegDis(backbone_checkpoint, backbone_name, correction_enabled=False)
-    elif variant == 'segdis_no_fbrc':
+    elif variant == 'segdis_no_rta':
         model = SegDis(backbone_checkpoint, backbone_name, correction_enabled=False,
                        relation_conditioning=False)
     elif variant == 'flr':
