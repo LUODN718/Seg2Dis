@@ -23,39 +23,8 @@ class FeatureProjection(nn.Sequential):
         )
 
 
-class MultiLevelHaarPyramid(nn.Module):
-    """Return [LL, LH, HL, HH] energy at 1/4, 1/8, 1/16 and 1/32."""
-
-    def __init__(self):
-        super().__init__()
-        kernels = torch.tensor(
-            [
-                [[0.5, 0.5], [0.5, 0.5]],
-                [[0.5, -0.5], [0.5, -0.5]],
-                [[0.5, 0.5], [-0.5, -0.5]],
-                [[0.5, -0.5], [-0.5, 0.5]],
-            ],
-            dtype=torch.float32,
-        ).unsqueeze(1)
-        self.register_buffer("kernels", kernels, persistent=False)
-
-    def forward(self, image: torch.Tensor) -> list[torch.Tensor]:
-        current = image
-        levels = []
-        for level_index in range(5):
-            channels = current.shape[1]
-            weight = self.kernels.to(dtype=current.dtype).repeat(channels, 1, 1, 1)
-            coeff = F.conv2d(current, weight, stride=2, groups=channels)
-            coeff = coeff.view(current.shape[0], channels, 4, *coeff.shape[-2:])
-            energy = coeff.abs().mean(dim=1)
-            current = coeff[:, :, 0]
-            if level_index >= 1:
-                levels.append(energy)
-        return levels
-
-
 class ScaleCorrectionBlock(nn.Module):
-    """Full-map correction whose frequency input is fixed by the stage role."""
+    """Full-map correction block used by the released PFRS configuration."""
 
     def __init__(
         self,
@@ -239,67 +208,25 @@ class AdaptiveBoundaryBlock(nn.Module):
         return (dilated - eroded).clamp(0.0, 1.0)
 
 
-class FrequencyAdaptiveRefinementNet(MasterResidualNet):
-    """V3 heterogeneous refinement: global low frequency to local adaptive edges."""
+class ProgressiveForegroundRefinement(MasterResidualNet):
+    """The fixed PFRS configuration used by the complete SegDis model."""
 
-    ABLATIONS = (
-        "full",
-        "no_residual",
-        "no_frequency",
-        "no_gate",
-        "no_residual_no_frequency",
-        "no_gate_no_residual",
-        "no_gate_no_frequency",
-        "no_gate_no_residual_no_frequency",
-        "no_gate_no_frequency_s4_s3_context",
-    )
-
-    NO_RESIDUAL_ABLATIONS = {
-        "no_residual",
-        "no_residual_no_frequency",
-        "no_gate_no_residual",
-        "no_gate_no_residual_no_frequency",
-    }
-    NO_FREQUENCY_ABLATIONS = {
-        "no_frequency",
-        "no_residual_no_frequency",
-        "no_gate_no_frequency",
-        "no_gate_no_residual_no_frequency",
-        "no_gate_no_frequency_s4_s3_context",
-    }
-    NO_GATE_ABLATIONS = {
-        "no_gate",
-        "no_gate_no_residual",
-        "no_gate_no_frequency",
-        "no_gate_no_residual_no_frequency",
-        "no_gate_no_frequency_s4_s3_context",
-    }
+    CONFIGURATION = "complete"
 
     def __init__(
         self,
         backbone_name: str = CFG.backbone_name,
         backbone_checkpoint: Optional[str] = None,
-        ablation: str = "full",
-        use_uncertainty_features: bool = True,
-        semantic_uncertainty_scope: bool = False,
-        boundary_uses_uncertainty: bool = True,
-        residual_input_mode: str = "erased",
     ):
-        if residual_input_mode not in ("rgb", "erased"):
-            raise ValueError(f"Unknown residual input mode: {residual_input_mode}")
-        self.residual_input_mode = residual_input_mode
-        if ablation not in self.ABLATIONS:
-            raise ValueError(
-                f"Unknown V3 ablation '{ablation}'. Choose from {self.ABLATIONS}."
-            )
         super().__init__(
             backbone_name=backbone_name,
             backbone_checkpoint=backbone_checkpoint,
             detach_erase_mask=True,
         )
-        self.ablation = ablation
-        self.use_uncertainty_features = use_uncertainty_features
-        self.semantic_uncertainty_scope = semantic_uncertainty_scope
+        self.configuration = self.CONFIGURATION
+        self.residual_input_mode = "rgb"
+        self.use_uncertainty_features = True
+        self.semantic_uncertainty_scope = False
         del self.residual_pyramid
         del self.refinement_blocks
         del self.missing_head
@@ -308,7 +235,6 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
             CFG.v3_residual_dim,
             input_channels=5,
         )
-        self.frequency_pyramid = MultiLevelHaarPyramid()
         self.scale_blocks = nn.ModuleList(
             [
                 ScaleCorrectionBlock(
@@ -316,21 +242,21 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
                     CFG.v3_residual_dim,
                     1,
                     CFG.v3_dim,
-                    use_uncertainty=use_uncertainty_features,
+                    use_uncertainty=True,
                 ),
                 ScaleCorrectionBlock(
                     320,
                     CFG.v3_residual_dim,
                     3,
                     CFG.v3_dim,
-                    use_uncertainty=use_uncertainty_features,
+                    use_uncertainty=True,
                 ),
                 ScaleCorrectionBlock(
                     128,
                     CFG.v3_residual_dim,
                     3,
                     CFG.v3_dim,
-                    use_uncertainty=use_uncertainty_features,
+                    use_uncertainty=True,
                 ),
             ]
         )
@@ -338,24 +264,24 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
             64,
             CFG.v3_residual_dim,
             CFG.v3_dim,
-            use_uncertainty=boundary_uses_uncertainty,
+            use_uncertainty=True,
         )
 
     @property
     def use_residual(self) -> bool:
-        return self.ablation not in self.NO_RESIDUAL_ABLATIONS
+        return True
 
     @property
     def use_frequency(self) -> bool:
-        return self.ablation not in self.NO_FREQUENCY_ABLATIONS
+        return False
 
     @property
     def use_gate(self) -> bool:
-        return self.ablation not in self.NO_GATE_ABLATIONS
+        return False
 
     @property
     def coarse_stages_are_context_only(self) -> bool:
-        return self.ablation == "no_gate_no_frequency_s4_s3_context"
+        return True
 
     @staticmethod
     def _zero_residual_features(
@@ -379,17 +305,6 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
         padded = F.pad(tensor, (padding, padding, padding, padding), mode="reflect")
         return F.avg_pool2d(padded, kernel_size=kernel, stride=1)
 
-    @staticmethod
-    def _selected_frequency(
-        frequency: torch.Tensor,
-        stage_index: int,
-    ) -> torch.Tensor:
-        if stage_index == 0:
-            return frequency[:, :1]
-        if stage_index == 1:
-            return frequency[:, :3]
-        return frequency[:, 1:]
-
     def _build_residual_features(
         self,
         image: torch.Tensor,
@@ -399,17 +314,10 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
         master_probability: Optional[torch.Tensor] = None,
     ) -> tuple[list[torch.Tensor], dict[str, object]]:
         del master_probability
-        if not self.use_residual:
-            return self._zero_residual_features(original_features), {}
-        if self.residual_input_mode == "rgb":
-            residual_image = image
-        else:
-            low_pass_image = self._average_blur(image, CFG.erase_fill_kernel)
-            residual_image = image * (1.0 - erase_mask) + low_pass_image * erase_mask
-        residual_input = torch.cat([residual_image, erase_mask, uncertainty], dim=1)
+        residual_input = torch.cat([image, erase_mask, uncertainty], dim=1)
         return self.residual_evidence(residual_input), {
             "residual_input": residual_input,
-            "residual_image": residual_image,
+            "residual_image": image,
         }
 
     def _build_erase_mask(
@@ -693,8 +601,6 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
             residual_features,
             refinement_features,
         )
-        frequency_features = self.frequency_pyramid(image)
-
         current = master_probability
         previous_feature = None
         refined = []
@@ -704,14 +610,16 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
         stage_order = [3, 2, 1]
         for block_index, feature_index in enumerate(stage_order):
             correction_inputs.append(torch.logit(current.clamp(1e-5, 1.0 - 1e-5)))
-            frequency_feature = self._selected_frequency(
-                frequency_features[feature_index],
-                block_index,
+            scale_block = self.scale_blocks[block_index]
+            scale_feature = refinement_features[feature_index]
+            # Preserve the released checkpoint's zero-input projection weights.
+            frequency_feature = scale_feature.new_zeros(
+                scale_feature.shape[0],
+                scale_block.frequency_projection[0].in_channels,
+                *scale_feature.shape[-2:],
             )
-            if not self.use_frequency:
-                frequency_feature = torch.zeros_like(frequency_feature)
-            result = self.scale_blocks[block_index](
-                refinement_features[feature_index],
+            result = scale_block(
+                scale_feature,
                 correction_residual_features[feature_index],
                 frequency_feature,
                 current,
@@ -812,11 +720,12 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
             previous_feature = result["feature"]
 
         correction_inputs.append(torch.logit(current))
-        boundary_frequency = frequency_features[0]
-        if not self.use_frequency:
-            boundary_frequency = torch.zeros_like(boundary_frequency)
+        boundary_feature = refinement_features[0]
+        boundary_frequency = boundary_feature.new_zeros(
+            boundary_feature.shape[0], 4, *boundary_feature.shape[-2:]
+        )
         boundary_result = self.boundary_block.forward_features(
-            refinement_features[0],
+            boundary_feature,
             correction_residual_features[0],
             boundary_frequency,
             current,
@@ -962,13 +871,6 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
         )
         current = (current + smooth_correction + sharp_correction).clamp(1e-5, 1.0 - 1e-5)
         refined.append(torch.logit(current))
-        fine_energy = frequency_features[0][:, 1:].mean(dim=1, keepdim=True)
-        coarse_energy = self._upsample(
-            frequency_features[1][:, 1:].mean(dim=1, keepdim=True),
-            fine_energy.shape[-2:],
-        )
-        sharpness_target = fine_energy / (fine_energy + coarse_energy + 1e-6)
-        sharpness_target = self._upsample(sharpness_target, input_size).detach()
         correction_heads.extend(
             [
                 {
@@ -1004,7 +906,6 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
                 "correction_heads": correction_heads,
                 "proposal_logit": proposal_logit,
                 "router": router,
-                "sharpness_target": sharpness_target,
                 "roi_boxes": boxes,
                 "erase_mask": erase_mask,
                 "uncertainty": uncertainty,
@@ -1014,7 +915,6 @@ class FrequencyAdaptiveRefinementNet(MasterResidualNet):
                     if self.semantic_uncertainty_scope
                     else torch.ones_like(uncertainty)
                 ),
-                "frequency_features": frequency_features,
                 "error_evidence": error_evidence,
                 **residual_diagnostics,
                 **refinement_diagnostics,

@@ -351,7 +351,7 @@ assets/                              Figures referenced in this README
 models/
   factory.py                         Model construction and checkpoint validation
   foreground_type_allocation.py      Complete SegDis / FBRC
-  frequency_adaptive_refinement_net.py  PFRS and its required refinement blocks
+  progressive_foreground_refinement.py  Fixed PFRS configuration
   master_residual_net.py             Shared encoder, Master Decoder, residual blocks
 utils/                               Foreground loss and canonical evaluation
 tests/                               Model and evaluation regression tests
@@ -368,9 +368,13 @@ requirements.txt                     Python dependencies
 environment.yml                      Conda environment
 ```
 
-`main` contains the complete model and its reproducible pipeline, not historical
-experimental networks or ablation launchers. The legacy `v3` module names and
-checkpoint metadata are retained for compatibility with released weights;
+`main` exposes one complete SegDis-RGB configuration and its reproducible
+pipeline. The training and checkpoint-loading entry points do not expose
+historical ablations or erased-input variants. The checkpoint keeps its
+`v3.*` state-dictionary prefix so the published weights load unchanged. The
+complete PFRS configuration supplies zero frequency input; it does not compute
+Haar frequency maps or return the old frequency diagnostics. Fixed zero-input
+projection weights remain for exact compatibility with the released checkpoint.
 `B4` in checkpoint metadata identifies the complete configuration, **not** a
 PVT-v2-B4 backbone. The default encoder is PVT-v2-B2.
 

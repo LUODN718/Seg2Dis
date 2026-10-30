@@ -1,4 +1,4 @@
-"""Foreground-preserving SOD/COD pixel allocation on top of V3."""
+"""Complete SegDis model: PFRS foreground discovery and SOD/COD allocation."""
 
 from __future__ import annotations
 
@@ -7,32 +7,24 @@ import torch.nn.functional as F
 from torch import nn
 
 from config import CFG
-from .frequency_adaptive_refinement_net import FrequencyAdaptiveRefinementNet
+from .progressive_foreground_refinement import ProgressiveForegroundRefinement
 
 
 class SegDis(nn.Module):
-    """Keep V3 foreground discovery and factorize foreground into SOD/COD.
+    """Predict foreground first, then assign each foreground pixel to SOD or COD."""
 
-    The allocator predicts P(type | foreground). A zero-initialized residual
-    can improve the union mask, but starts with exactly the V3 output.
-    """
-
-    def __init__(self, backbone_checkpoint: str | None = None, v3_checkpoint: str | None = None, hidden: int = 96,
-                 correction_limit: float = 0.20, backbone_name: str = CFG.backbone_name,
-                 residual_input_mode: str = "rgb"):
+    def __init__(
+        self,
+        backbone_checkpoint: str | None = None,
+        backbone_name: str = CFG.backbone_name,
+    ):
         super().__init__()
-        self.v3 = FrequencyAdaptiveRefinementNet(
+        self.v3 = ProgressiveForegroundRefinement(
             backbone_name=backbone_name,
             backbone_checkpoint=backbone_checkpoint,
-            ablation="no_gate_no_frequency_s4_s3_context",
-            residual_input_mode=residual_input_mode,
         )
-        if v3_checkpoint:
-            state = torch.load(v3_checkpoint, map_location="cpu", weights_only=False)
-            state = state.get("model_state", state.get("state_dict", state))
-            state = {key.removeprefix("module.").removeprefix("v3."): value for key, value in state.items() if isinstance(value, torch.Tensor)}
-            loaded, ignored = self.v3.load_compatible_model_state(state)
-            print(f"[V3Init] loaded={loaded} ignored={ignored} from {v3_checkpoint}")
+        hidden = 96
+        correction_limit = 0.20
         self.semantic_projection = nn.Sequential(
             nn.Conv2d(CFG.stage_channels[2], hidden, 1, bias=False),
             nn.GroupNorm(8, hidden), nn.SiLU(inplace=True),
@@ -54,27 +46,6 @@ class SegDis(nn.Module):
         nn.init.zeros_(self.correction[-1].weight)
         nn.init.zeros_(self.correction[-1].bias)
         self.correction_limit = float(correction_limit)
-
-    def _load_from_state_dict(self, state_dict, prefix, local_metadata, strict,
-                              missing_keys, unexpected_keys, error_msgs):
-        """Upgrade checkpoints trained with the former shared query offset.
-
-        Older checkpoints store a single ``hidden``-dimensional condition
-        vector.  Duplicating it into the two new branches preserves their
-        former behaviour at load time; fine-tuning can then learn distinct
-        SOD/COD offsets.
-        """
-        for suffix in ("0.weight", "0.bias", "1.weight", "1.bias"):
-            key = f"{prefix}query_condition.{suffix}"
-            value = state_dict.get(key)
-            target = self.state_dict()[f"query_condition.{suffix}"]
-            if value is not None and value.shape != target.shape:
-                if value.shape[0] * 2 == target.shape[0] and value.shape[1:] == target.shape[1:]:
-                    state_dict[key] = value.repeat((2,) + (1,) * (value.ndim - 1))
-        super()._load_from_state_dict(
-            state_dict, prefix, local_metadata, strict,
-            missing_keys, unexpected_keys, error_msgs,
-        )
 
     @staticmethod
     def _masked_pool(feature: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
@@ -135,7 +106,3 @@ class SegDis(nn.Module):
             "semantic_relation": relation,
             "semantic_correction": correction,
         }
-
-
-# Backward-compatible name used by checkpoints and earlier experiment scripts.
-V3ForegroundTypeAllocationNet = SegDis

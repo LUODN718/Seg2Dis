@@ -6,7 +6,6 @@ import torch
 
 from models import (
     SegDis,
-    V3ForegroundTypeAllocationNet,
     build_model,
     validate_checkpoint,
 )
@@ -37,14 +36,22 @@ class ModelTests(unittest.TestCase):
         torch.testing.assert_close(probability[:, :1], 1 - foreground)
         torch.testing.assert_close(probability[:, 1:], foreground * types)
 
-    def test_existing_state_keys_and_legacy_name(self):
+    def test_existing_checkpoint_keys(self):
         state = self.model.state_dict()
         self.assertIn("query", state.keys())
         self.assertTrue(any(key.startswith("v3.master_decoder.") for key in state))
-        self.assertIs(V3ForegroundTypeAllocationNet, SegDis)
         result = self.model.load_state_dict(state, strict=True)
         self.assertEqual(result.missing_keys, [])
         self.assertEqual(result.unexpected_keys, [])
+
+    def test_only_complete_pfrs_configuration_is_exposed(self):
+        self.assertEqual(self.model.v3.configuration, "complete")
+        self.assertTrue(self.model.v3.use_residual)
+        self.assertFalse(self.model.v3.use_frequency)
+        self.assertFalse(self.model.v3.use_gate)
+        self.assertTrue(self.model.v3.coarse_stages_are_context_only)
+        self.assertNotIn("frequency_features", self.output)
+        self.assertNotIn("sharpness_target", self.output)
 
     def test_complete_configuration_metadata(self):
         validate_checkpoint({"variant": "SEGDIS_RGB_RESIDUAL", "residual_input_mode": "rgb"})
@@ -55,6 +62,10 @@ class ModelTests(unittest.TestCase):
             validate_checkpoint({"variant": "SEGDIS_RGB_RESIDUAL", "residual_input_mode": "erased"})
         with self.assertRaises(ValueError):
             validate_checkpoint({"variant": "B0", "residual_input_mode": "rgb"})
+        with self.assertRaises(ValueError):
+            validate_checkpoint({"variant": "V3_FOREGROUND_TYPE_ALLOCATION", "residual_input_mode": "rgb"})
+        with self.assertRaises(ValueError):
+            validate_checkpoint({"residual_input_mode": "rgb"})
 
     def test_rgb_residual_keeps_image_mask_and_uncertainty(self):
         image = torch.randn(1, 3, 64, 64)

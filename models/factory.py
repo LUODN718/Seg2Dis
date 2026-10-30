@@ -24,11 +24,9 @@ def validate_checkpoint(checkpoint: dict) -> None:
             "This release loads complete SegDis-RGB checkpoints only. "
             "Expected residual_input_mode='rgb'; do not load historical erased-input weights."
         )
-    stored = str(checkpoint.get("variant", checkpoint.get("ablation", "B4"))).upper()
-    if stored == "SEGDIS_RGB_RESIDUAL":
-        return
-    suffix = stored.rsplit("_", 1)[-1]
-    if stored == "V3_FOREGROUND_TYPE_ALLOCATION":
-        suffix = "B4"
-    if suffix != "B4":
-        raise ValueError(f"The main branch accepts complete SegDis (B4) checkpoints, got: {stored}")
+    stored = str(checkpoint.get("variant", "")).upper()
+    if stored not in {"B4", "SEGDIS_RGB_RESIDUAL"}:
+        raise ValueError(
+            "The main branch accepts complete SegDis checkpoints only "
+            f"(B4 or SEGDIS_RGB_RESIDUAL), got: {stored or 'missing variant'}"
+        )
