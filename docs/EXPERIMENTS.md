@@ -66,7 +66,7 @@ retrained or silently loaded into this repository's model.
 
 The automatic queue (default) is:
 
-`FSP -> USC12K_SEGDIS_PM_RGB_U -> USC12K_SEGDIS`.
+`FSP -> USC12K_SEGDIS -> USC12K_SEGDIS_PM_RGB_U`.
 
 After reviewing these results, start the held main/head/RTA/FLR ablation queue
 manually from the repository root:

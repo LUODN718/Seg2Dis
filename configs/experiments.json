@@ -4,8 +4,8 @@
   "optional_training_runs": 0,
   "multi_seed": false,
   "priority_queue": [
-    "USC12K_SEGDIS_PM_RGB_U",
-    "USC12K_SEGDIS"
+    "USC12K_SEGDIS",
+    "USC12K_SEGDIS_PM_RGB_U"
   ],
   "manual_queue": [
     "USC12K_SEMANTIC_HEAD",

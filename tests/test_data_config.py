@@ -16,7 +16,7 @@ class DataConfigTests(unittest.TestCase):
         plan=json.loads((ROOT/'configs/experiments.json').read_text())
         self.assertEqual(sum(x['required'] for x in plan['experiments']),15)
         self.assertEqual(plan['priority_queue'],[
-            'USC12K_SEGDIS_PM_RGB_U','USC12K_SEGDIS'])
+            'USC12K_SEGDIS','USC12K_SEGDIS_PM_RGB_U'])
         self.assertEqual(plan['manual_queue'],[
             'USC12K_SEMANTIC_HEAD','USC12K_PFG_HEAD',
             'USC12K_SEMANTIC_PFG_HEAD','USC12K_DECODER_HEAD',
