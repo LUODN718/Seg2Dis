@@ -1,4 +1,6 @@
 from .factory import VARIANTS, build_model, three_class_probability, validate_checkpoint
-from .foreground_type_allocation import SegDis
+from .flr import FLR
+from .rta import RTA
+from .segdis import SegDis
 
-__all__ = ['VARIANTS', 'SegDis', 'build_model', 'three_class_probability', 'validate_checkpoint']
+__all__ = ['VARIANTS', 'FLR', 'RTA', 'SegDis', 'build_model', 'three_class_probability', 'validate_checkpoint']

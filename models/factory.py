@@ -1,6 +1,6 @@
 """One model registry; no imports from another checkout or implicit checkpoint."""
 from config import CFG
-from .foreground_type_allocation import SegDis
+from .segdis import SegDis
 from .readouts import ForegroundOnly, DirectReadout
 
 VARIANTS = ('segdis', 'segdis_no_correction', 'segdis_no_rta', 'flr', 'pfg_head',

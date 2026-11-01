@@ -13,8 +13,8 @@ Structural and checkpoint tests are not benchmark accuracy results.
 ## Install
 
 ```bash
-git clone https://github.com/LUODN718/SegDis.git
-cd SegDis
+git clone https://github.com/LUODN718/SegDis_New.git
+cd SegDis_New
 conda env create -f environment.yml
 conda activate segdis
 python -m unittest discover -s tests -v
@@ -23,9 +23,9 @@ python -m unittest discover -s tests -v
 ## Architecture
 
 ```text
-RGB -> PVT / Master Decoder -> RGB-guided foreground refinement -> P0
-          |                                    |
-          +-> S3 semantics -> FG/BG relation -> conditional SOD/COD queries
+RGB -> PVT / Master Decoder -> FLR -> P0
+          |                     |
+          +-> S3 semantics -> RTA -> conditional SOD/COD queries
                                                |
                           bounded foreground correction -> Pu
 P(BG) = 1 - Pu
@@ -99,7 +99,7 @@ metrics are retained. See [evaluation](docs/EVALUATION.md).
 
 | Location | Purpose |
 |---|---|
-| `models/` | Clean foreground module, complete SegDis and controlled heads |
+| `models/` | FLR, RTA, complete SegDis and controlled heads |
 | `configs/` | Current experiment definitions; no local dataset paths |
 | `datasets/` | Strict binary pairing and SOD-anchored joint sampling |
 | `utils/` | Losses, metrics, strict checkpoints and provenance |

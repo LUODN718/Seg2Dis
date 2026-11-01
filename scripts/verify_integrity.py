@@ -24,8 +24,8 @@ def main():
                 if any(x in name for x in ('frequency','haar','wavelet','fourier')):
                     raise AssertionError(f'Unsupported model implementation: {source.name}:{name}')
     model=build_model(str(args.backbone_checkpoint) if args.backbone_checkpoint else '').eval()
-    channels=[b.fusion[0][0].in_channels for b in model.foreground.scale_blocks]+[
-        model.foreground.boundary_block.smooth_body[0][0].in_channels,model.foreground.boundary_block.sharp_body[0][0].in_channels]
+    channels=[b.fusion[0][0].in_channels for b in model.flr.scale_blocks]+[
+        model.flr.boundary_block.smooth_body[0][0].in_channels,model.flr.boundary_block.sharp_body[0][0].in_channels]
     assert channels==[290,290,290,291,291]
     assert sum(p.numel() for p in model.parameters())==28376678
     assert not any('frequency' in k.lower() or 'haar' in k.lower() for k in model.state_dict())

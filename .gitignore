@@ -20,7 +20,6 @@ htmlcov/
 *.log
 *.tmp
 data/
-datasets/
 checkpoints/
 outputs/
 results/

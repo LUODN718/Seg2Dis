@@ -46,7 +46,7 @@ def compute_loss(model,batch,device,type_weight=0.5,calibration_weight=0.5,task=
     return loss,(terms['fg'],terms['type'],terms['composed'])
 
 def make_optimizer(model,config):
-    backbone=list(model.foreground.backbone.parameters())
+    backbone=list(model.flr.backbone.parameters())
     ids={id(p) for p in backbone}
     others=[p for p in model.parameters() if id(p) not in ids]
     groups=[{'params':backbone,'lr':config['backbone_lr']},{'params':others,'lr':config['base_lr']}]

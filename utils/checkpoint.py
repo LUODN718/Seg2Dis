@@ -12,7 +12,7 @@ def model_schema(state):
 def model_metadata(model):
     return {'format_version':FORMAT_VERSION,'architecture':CFG.architecture,
             'model_variant':model.variant,'backbone_name':model.backbone_name,
-            'residual_input_mode':model.foreground.residual_input_mode,
+            'residual_input_mode':model.flr.residual_input_mode,
             'model_schema':model_schema(model.state_dict())}
 
 def validate_checkpoint(checkpoint, model=None):
@@ -32,7 +32,7 @@ def validate_checkpoint(checkpoint, model=None):
         raise ValueError('Checkpoint tensor schema does not match its metadata')
     if model is not None:
         if (model.variant!=checkpoint['model_variant'] or
-                model.foreground.residual_input_mode!=checkpoint['residual_input_mode'] or
+                model.flr.residual_input_mode!=checkpoint['residual_input_mode'] or
                 model_schema(model.state_dict())!=checkpoint['model_schema']):
             raise ValueError('Checkpoint does not match the requested model variant/tensor shapes')
 

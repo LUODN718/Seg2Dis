@@ -2,7 +2,7 @@
 import torch
 from torch import nn
 from torch.nn import functional as F
-from .foreground_refinement import ForegroundRefinement
+from .flr import FLR
 
 def resize(x, size):
     return F.interpolate(x, size=size, mode='bilinear', align_corners=False)
@@ -10,11 +10,11 @@ def resize(x, size):
 class ForegroundOnly(nn.Module):
     def __init__(self, backbone_checkpoint=None, residual_input_mode='rgb'):
         super().__init__()
-        self.foreground = ForegroundRefinement(backbone_checkpoint=backbone_checkpoint,
-                                                  residual_input_mode=residual_input_mode)
+        self.flr = FLR(backbone_checkpoint=backbone_checkpoint,
+                       residual_input_mode=residual_input_mode)
 
     def forward(self, image):
-        base = self.foreground(image)
+        base = self.flr(image)
         logit = base['final']
         p = logit.sigmoid()
         return {**base, 'base_final': logit, 'union': logit, 'P0': p, 'Pu': p}
@@ -33,8 +33,8 @@ class DirectReadout(ForegroundOnly):
             nn.GroupNorm(8,96), nn.SiLU(inplace=True), nn.Conv2d(96,3,1))
         self._features = {}
         if source == 'decoder_head':
-            self.foreground.boundary_block.smooth_body.register_forward_hook(self._smooth)
-            self.foreground.boundary_block.sharp_roi_body.register_forward_hook(self._sharp)
+            self.flr.boundary_block.smooth_body.register_forward_hook(self._smooth)
+            self.flr.boundary_block.sharp_roi_body.register_forward_hook(self._sharp)
 
     def _smooth(self, module, inputs, output): self._features['smooth'] = output
     def _sharp(self, module, inputs, output): self._features['sharp_roi'] = output

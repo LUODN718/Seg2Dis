@@ -16,7 +16,7 @@ does not imply a running job.
 | USC12K_SEGDIS_PM_RGB_U | USC12K | 50 / 352 | Complete SegDis; replace E with detached P_M, keep RGB and U |
 | USC12K_PFG_HEAD | USC12K | 50 / 352 | B0 / H(PFG), reused across framework and RTA tables |
 | USC12K_SEGDIS_NO_CORRECTION | USC12K | 50 / 352 | B1: relation-conditioned type allocation without C |
-| USC12K_SEGDIS_NO_RTA | USC12K | 50 / 352 | RTA ablation (formerly FBRC): removes relation-conditioned queries and bounded foreground correction |
+| USC12K_SEGDIS_NO_RTA | USC12K | 50 / 352 | RTA ablation: removes relation-conditioned queries and bounded foreground correction |
 | USC12K_SEMANTIC_PFG_HEAD | USC12K | 50 / 352 | H(F,PFG), F fixed to encoder S3 |
 | USC12K_DECODER_HEAD | USC12K | 50 / 352 | H(Fdec), smooth96 + restored sharp-ROI96 |
 | USC12K_SEMANTIC_HEAD | USC12K | 50 / 352 | H(F): S3-only ordinary three-class head |

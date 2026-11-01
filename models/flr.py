@@ -197,8 +197,8 @@ class AdaptiveBoundaryBlock(nn.Module):
         return (dilated - eroded).clamp(0.0, 1.0)
 
 
-class ForegroundRefinement(ForegroundEncoderDecoder):
-    """Fixed foreground refinement path used by the complete SegDis model."""
+class FLR(ForegroundEncoderDecoder):
+    """Foreground localization and refinement path used by SegDis."""
 
     CONFIGURATION = "complete"
 

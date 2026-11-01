@@ -16,9 +16,12 @@ class ModelTests(unittest.TestCase):
     def test_complete_structure(self):
         model=self.model
         self.assertEqual(sum(p.numel() for p in model.parameters()),28376678)
-        self.assertEqual([b.fusion[0][0].in_channels for b in model.foreground.scale_blocks],[290]*3)
-        self.assertEqual(model.foreground.boundary_block.smooth_body[0][0].in_channels,291)
-        self.assertEqual(model.foreground.boundary_block.sharp_body[0][0].in_channels,291)
+        self.assertEqual([b.fusion[0][0].in_channels for b in model.flr.scale_blocks],[290]*3)
+        self.assertEqual(model.flr.boundary_block.smooth_body[0][0].in_channels,291)
+        self.assertEqual(model.flr.boundary_block.sharp_body[0][0].in_channels,291)
+        self.assertEqual(model.flr.__class__.__name__,'FLR')
+        self.assertEqual(model.rta.__class__.__name__,'RTA')
+        self.assertTrue(all(key.startswith(('flr.','rta.')) for key in model.state_dict()))
         for name,_ in model.named_modules():
             self.assertFalse(any(x in name.lower() for x in ('frequency','haar','wavelet')))
         self.assertFalse(any('frequency' in k.lower() or 'haar' in k.lower() for k in model.state_dict()))
@@ -44,7 +47,7 @@ class ModelTests(unittest.TestCase):
             torch.save({**model_metadata(model),'model_state':model.state_dict(),
                         'image_size':352,'run_kind':'smoke_test','epoch':0},path)
             restored,_,_=load_model(path,'cpu')
-            self.assertEqual(restored.foreground.residual_input_mode,'rgb_pm_u')
+            self.assertEqual(restored.flr.residual_input_mode,'rgb_pm_u')
             with torch.inference_mode():actual=restored(self.image)['three_class_probability']
         torch.testing.assert_close(actual,out['three_class_probability'],rtol=0,atol=0)
 
@@ -57,20 +60,20 @@ class ModelTests(unittest.TestCase):
                 loss,_=compute_loss(model,batch,torch.device('cpu'))
                 self.assertTrue(torch.isfinite(loss));loss.backward()
                 self.assertTrue(all(torch.isfinite(p.grad).all() for p in model.parameters() if p.grad is not None))
-                self.assertIsNotNone(model.foreground.backbone.patch_embed.proj.weight.grad)
+                self.assertIsNotNone(model.flr.backbone.patch_embed.proj.weight.grad)
                 if variant=='flr':
-                    self.assertFalse(hasattr(model,'query'))
+                    self.assertFalse(hasattr(model,'rta'))
                     with torch.no_grad():out=model(self.image)
                     self.assertTrue(torch.equal(out['P0'],out['Pu']))
                     self.assertNotIn('three_class_probability',out)
                 if variant=='segdis_no_correction':
-                    self.assertFalse(hasattr(model,'correction'))
+                    self.assertFalse(hasattr(model.rta,'correction'))
                     with torch.no_grad():out=model(self.image)
                     self.assertTrue(torch.equal(out['P0'],out['Pu']))
                 if variant=='segdis_no_rta':
-                    self.assertFalse(hasattr(model,'query_condition'))
-                    self.assertFalse(hasattr(model,'correction'))
-                    self.assertFalse(model.relation_conditioning)
+                    self.assertFalse(hasattr(model.rta,'query_condition'))
+                    self.assertFalse(hasattr(model.rta,'correction'))
+                    self.assertFalse(model.rta.relation_conditioning)
                     with torch.no_grad():out=model(self.image)
                     self.assertTrue(torch.equal(out['P0'],out['Pu']))
                 del model
@@ -99,7 +102,7 @@ class ModelTests(unittest.TestCase):
         with self.assertRaises(ValueError):validate_checkpoint({'model_state':self.model.state_dict()})
         state={**model_metadata(self.model),'model_state':dict(self.model.state_dict())}
         validate_checkpoint(state,self.model)
-        state['model_state']['foreground.scale_blocks.0.fusion.0.0.weight']=torch.zeros(96,386,3,3)
+        state['model_state']['flr.scale_blocks.0.fusion.0.0.weight']=torch.zeros(96,386,3,3)
         with self.assertRaises(ValueError):validate_checkpoint(state,self.model)
 
 if __name__=='__main__':unittest.main()
