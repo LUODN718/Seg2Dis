@@ -36,26 +36,6 @@ The output probabilities are `P(BG) = 1 - Pu`,
 | `benchmarks/` | Training provenance, metrics, and checkpoint integrity data |
 | `docs/` | Architecture, evaluation, experiments, and reproduction details |
 
-## Released Results
-
-The released checkpoint was trained for 50 epochs on 8,400 USC12K training
-images. Evaluation uses the 3,600-image validation split, with 900 images in
-each of Scene-A, Scene-B, Scene-C, and Scene-D.
-
-| Metric | Result (%) |
-|---|---:|
-| IoU-BG | 97.0415 |
-| IoU-SOD | 75.2697 |
-| IoU-COD | 61.6646 |
-| Foreground mIoU | 68.4671 |
-| mIoU | 77.9919 |
-| mAcc | 85.5679 |
-| Pixel accuracy | 96.7598 |
-| CSCS | 5.6633 |
-
-The results use raw three-class argmax at 352 x 352, with no scene remapping.
-The full confusion counts and scene results are in
-[`benchmarks/usc12k_segdis_metrics.json`](benchmarks/usc12k_segdis_metrics.json).
 
 ## Install and Get Weights
 
