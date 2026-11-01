@@ -11,7 +11,7 @@ from utils.runtime import ROOT,atomic_save,sha256,source_manifest,canonical_hash
 def read(path):return json.loads(Path(path).read_text(encoding='utf-8-sig'))
 
 def call(root,name,arguments):
-    atomic_save(root/'status.json',{'stage':name,'command':arguments})
+    atomic_save(root/'status.json',{'stage':name,'command':list(map(str,arguments))})
     with (root/f'{name}.stdout.log').open('a',encoding='utf-8') as out, (root/f'{name}.stderr.log').open('a',encoding='utf-8') as err:
         result=subprocess.run([sys.executable,'-u',*map(str,arguments)],cwd=ROOT,stdout=out,stderr=err)
     if result.returncode:raise RuntimeError(f'{name} exited with code {result.returncode}; inspect its logs')
