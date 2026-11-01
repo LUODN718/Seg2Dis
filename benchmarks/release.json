@@ -1,10 +1,21 @@
 {
-  "architecture": "segdis_rgb_v2",
+  "status": "packaged_not_published",
+  "release_tag": "segdis-usc12k-20261101",
+  "release_name": "SegDis USC12K Model",
+  "model": "SegDis",
   "model_variant": "segdis",
-  "status": "awaiting_training_and_evaluation",
+  "backbone": "pvt_v2_b2",
+  "image_size": 352,
+  "selected_epoch": 50,
   "parameter_count": 28376678,
-  "checkpoint": null,
-  "sha256": null,
-  "url": null,
-  "metrics": null
+  "asset": "segdis_rgb_pvtb2_352.pth",
+  "size_bytes": 113714539,
+  "sha256": "9ecb3ff75ae1fd33fa3d61e824a976825bfa586a77105541f7a05519b60125d9",
+  "training_checkpoint_sha256": "294682cd63b5777b2f2d568583a93ad2abc366548c46fdf0e7a9a89335352cd1",
+  "source_fingerprint": "80750e78bb09b7f33691af9d0f4539123f3c4cde807807d6f5312354b9ea3db2",
+  "model_schema": "97ba24a9c38b5056dc9855868c012b1f55ec01b09c37e5b019ff919cbfa1d19e",
+  "url": "https://github.com/LUODN718/SegDis_New/releases/download/segdis-usc12k-20261101/segdis_rgb_pvtb2_352.pth",
+  "api_asset_url": null,
+  "metrics": "usc12k_segdis_metrics.json",
+  "training_provenance": "usc12k_segdis_training.json"
 }

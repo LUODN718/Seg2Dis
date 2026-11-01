@@ -1,16 +1,65 @@
 # SegDis
 
-Segment first, then discriminate: unified salient and camouflaged object detection.
+SegDis performs three-class segmentation for salient objects (SOD), camouflaged
+objects (COD), and background in one model. It predicts all three classes from
+the image without receiving a scene or task label.
 
-This repository contains the current RGB architecture, one training/evaluation
-pipeline, and controlled experiments derived from the same foreground module.
-The encoder is PVT-v2-B2. The model contains no frequency transform, frequency
-projection, or zero-input compatibility branch.
+## Model
 
-**Status:** matching trained weights and benchmark results are pending.
-Structural and checkpoint tests are not benchmark accuracy results.
+The encoder is PVT-v2-B2. A 128-channel Master Decoder produces a coarse
+foreground probability, then two connected modules refine and classify it:
 
-## Install
+- **FLR (Foreground Localization and Refinement)** predicts the initial
+  foreground map `P0`. Its residual encoder receives normalized RGB, the
+  blurred squared Master probability `E`, and uncertainty `U = 4 Pm (1 - Pm)`.
+  Coarse-to-fine features refine object regions and boundaries.
+- **RTA (Region Type Allocation)** uses foreground and background semantic
+  features to allocate foreground pixels to SOD or COD. A bounded correction
+  updates the foreground map to `Pu` near uncertain regions and boundaries.
+
+The output probabilities are `P(BG) = 1 - Pu`,
+`P(SOD) = Pu * P(SOD | FG)`, and `P(COD) = Pu * P(COD | FG)`. The model has
+28,376,678 parameters and accepts 352 x 352 inputs for the released benchmark.
+
+## Repository
+
+| Path | Contents |
+|---|---|
+| `models/` | SegDis, FLR, RTA, encoder, decoder, and controlled readouts |
+| `configs/` | USC12K main model, ablations, and task configurations |
+| `train.py` | Training loop and checkpoint writing |
+| `scripts/run_experiment.py` | Complete training and evaluation workflow |
+| `infer.py` | Prediction export |
+| `evaluate.py` | USC12K three-class and foreground evaluation |
+| `evaluate_predictions.py` | Scoring exported label or color maps |
+| `evaluate_binary.py` | Binary SOD/COD benchmark evaluation |
+| `benchmarks/` | Training provenance, metrics, and checkpoint integrity data |
+| `docs/` | Architecture, evaluation, experiments, and reproduction details |
+
+## Released Results
+
+The released checkpoint was trained for 50 epochs on 8,400 USC12K training
+images. Evaluation uses the 3,600-image validation split, with 900 images in
+each of Scene-A, Scene-B, Scene-C, and Scene-D.
+
+| Metric | Result (%) |
+|---|---:|
+| IoU-BG | 97.0415 |
+| IoU-SOD | 75.2697 |
+| IoU-COD | 61.6646 |
+| Foreground mIoU | 68.4671 |
+| mIoU | 77.9919 |
+| mAcc | 85.5679 |
+| Pixel accuracy | 96.7598 |
+| CSCS | 5.6633 |
+
+The results use raw three-class argmax at 352 x 352, with no scene remapping.
+The full confusion counts and scene results are in
+[`benchmarks/usc12k_segdis_metrics.json`](benchmarks/usc12k_segdis_metrics.json).
+
+## Install and Get Weights
+
+Create the pinned environment:
 
 ```bash
 git clone https://github.com/LUODN718/SegDis_New.git
@@ -20,93 +69,52 @@ conda activate segdis
 python -m unittest discover -s tests -v
 ```
 
-## Architecture
+Download the checkpoint from the repository's
+[Releases](https://github.com/LUODN718/SegDis_New/releases) page. On Windows,
+the helper downloads the asset using the configured GitHub credential manager
+and verifies its SHA256:
 
-```text
-RGB -> PVT / Master Decoder -> FLR -> P0
-          |                     |
-          +-> S3 semantics -> RTA -> conditional SOD/COD queries
-                                               |
-                          bounded foreground correction -> Pu
-P(BG) = 1 - Pu
-P(SOD) = Pu * P(SOD | FG)
-P(COD) = Pu * P(COD | FG)
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/download_checkpoint.ps1
 ```
 
-The standard residual encoder consumes `[normalized RGB, foreground guide E,
-uncertainty U]`. `USC12K_SEGDIS_PM_RGB_U` keeps RGB and U and replaces E with the
-detached master probability `P_M`, so both input conditions have five channels.
-`P0` inside a complete SegDis checkpoint is jointly trained. An independent
-foreground-only baseline uses its own `flr` variant and binary supervision;
-there `P0 == Pu` and no SOD/COD type output exists.
+The default path is `checkpoints/segdis_rgb_pvtb2_352.pth`. Its expected
+SHA256 and the training-checkpoint identity are recorded in
+[`benchmarks/release.json`](benchmarks/release.json).
 
-## Data
+## Inference and Evaluation
 
-USC12K follows [USCNet](https://github.com/ssecv/USCNet):
-
-```text
-VOC-USC12K/
-  JPEGImages/<id>.jpg
-  SegmentationClass/<id>.png
-  ImageSets/Segmentation/{train,val,Scene-A,Scene-B,Scene-C,Scene-D}.txt
-```
-
-Labels are `0=background`, `1=SOD`, `2=COD`, or black/red/green colors.
-The standard split contains train 8,400 / val 3,600, with 900 evaluation images
-per scene. Binary SOD/COD datasets use `Imgs/` and `GT/` directories.
-Dataset paths are supplied by the user. Data and checkpoints are not bundled.
-
-## Train
+The dataset root follows the USCNet layout, with `JPEGImages/`,
+`SegmentationClass/`, and `ImageSets/Segmentation/` containing the split lists.
+Use the released weights to export predictions:
 
 ```bash
-python train.py --config configs/usc12k/segdis.json \
-  --usc_root /path/to/VOC-USC12K \
-  --backbone_checkpoint /path/to/pvt_v2_b2.pth \
-  --output outputs/segdis --device cuda:0
+python infer.py --checkpoint checkpoints/segdis_rgb_pvtb2_352.pth --usc_root /path/to/VOC-USC12K --split val --output predictions/segdis --format color --device auto
 ```
 
-Use `--preflight` to validate data, model structure, optimizer groups and a loss
-backward pass without training. This preflight always uses CPU. `--resume`
-requires a matching training configuration, source fingerprint and tensor schema.
-See [experiments](docs/EXPERIMENTS.md) for budgets and required reruns.
-
-## Predict And Evaluate
+Evaluate the checkpoint directly:
 
 ```bash
-python infer.py --checkpoint outputs/segdis/best.pth \
-  --usc_root /path/to/VOC-USC12K --split val \
-  --output predictions/segdis --format color --device cuda:0
-
-python evaluate_predictions.py --usc_root /path/to/VOC-USC12K \
-  --pred_root predictions/segdis --format color --split val \
-  --output results/segdis_saved.json
-
-python evaluate.py --checkpoint outputs/segdis/best.pth \
-  --usc_root /path/to/VOC-USC12K --split val \
-  --output results/segdis.json --device cuda:0
+python evaluate.py --checkpoint checkpoints/segdis_rgb_pvtb2_352.pth --usc_root /path/to/VOC-USC12K --split val --output results/usc12k_metrics.json --device auto
 ```
 
-USC12K evaluation is fixed at 352 x 352, raw three-class argmax, with no scene
-remapping. Confusion matrices are summed before metrics. `evaluate.py` also
-reports P0/Pu binary metrics and correct-type/type-swap/missed-background counts
-for each scene. Binary-only models are never assigned fabricated type scores.
+Predictions use the original BG/SOD/COD classes. Do not resize saved maps or
+remap their labels before evaluation. See
+[`docs/EVALUATION.md`](docs/EVALUATION.md) for the complete protocol.
 
-Classic benchmarks use `evaluate_binary.py` with a JSON mapping of dataset names
-to roots. Both raw float probabilities and explicitly separate PNG/min-max
-metrics are retained. See [evaluation](docs/EVALUATION.md).
+## Training
 
-## Repository
+Training from scratch requires USC12K and the ImageNet-pretrained PVT-v2-B2
+checkpoint. The recorded training settings, split hashes, and backbone
+checksum are in
+[`benchmarks/usc12k_segdis_training.json`](benchmarks/usc12k_segdis_training.json).
 
-| Location | Purpose |
-|---|---|
-| `models/` | FLR, RTA, complete SegDis and controlled heads |
-| `configs/` | Current experiment definitions; no local dataset paths |
-| `datasets/` | Strict binary pairing and SOD-anchored joint sampling |
-| `utils/` | Losses, metrics, strict checkpoints and provenance |
-| `scripts/` | Experiment runner, audit and weight packaging |
-| `tests/` | Structure, training, data and checkpoint regression checks |
-| `docs/` | Architecture, evaluation and release acceptance protocols |
+```bash
+python scripts/run_experiment.py --config configs/usc12k/segdis.json --output outputs/usc12k_segdis --backbone_checkpoint /path/to/pvt_v2_b2.pth --usc_root /path/to/VOC-USC12K --device cuda:0
+```
 
-No entry point imports another research checkout. All model loads are strict.
-The [release manifest](benchmarks/release.json) remains pending until new weights
-pass training, evaluation and clean-checkout verification.
+The runner trains the model, evaluates all four USC12K scenes, saves foreground
+probabilities and predictions, and checks that exported predictions reproduce
+the direct three-class confusion counts. The released model and its checkpoint
+verification details are described in
+[`docs/REPRODUCIBILITY.md`](docs/REPRODUCIBILITY.md).

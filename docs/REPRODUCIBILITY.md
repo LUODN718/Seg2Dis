@@ -1,43 +1,71 @@
-# Release acceptance
+# Reproducibility
 
-The implementation is `segdis_rgb_v2`, PVT-v2-B2, complete model 28,376,678
-parameters. Scale fusion inputs are 290/290/290; boundary fusion inputs 291/291.
-There is one foreground implementation, shared by every controlled experiment.
+## Model and checkpoint
 
-## Required checks
+The release contains the complete SegDis model with a PVT-v2-B2 encoder,
+trained at 352 x 352 for 50 epochs on USC12K. The selected checkpoint is epoch
+50, chosen by minimum epoch-average training objective. It has 28,376,678
+parameters.
 
-1. Run all unit tests from a fresh checkout and the pinned environment.
-2. Run `scripts/verify_integrity.py` with real USC12K data and the ImageNet
-   backbone file. Confirm real 352px forward cases, tensor schema and strict
-   checkpoint save/load roundtrip. This uses CPU and is not a benchmark result.
-3. Preflight every scheduled configuration: data count, sampling/update budget,
-   full ImageNet backbone loading, objective backward and optimizer coverage.
-4. Train from the frozen source/configuration. Resume requires exact source,
-   data, backbone and configuration identity, including optimizer/scheduler/RNG.
-5. Evaluate the trained checkpoint on all 3,600 USC12K images and all four scenes.
-   Save P0/Pu raw maps and strict three-class exports. Re-evaluate PNG predictions
-   and compare exact confusion matrices. Run each declared external benchmark.
-6. Package only trained complete-model weights with matching evaluation and
-   completed training records. Smoke weights cannot be packaged as a release.
-7. In a clean checkout, load the packaged weight strictly, reproduce saved
-   predictions/metrics, verify SHA256, then publish its matching manifest.
+| Item | Recorded identity |
+|---|---|
+| Model variant | `segdis` |
+| Training experiment | `USC12K_SEGDIS` |
+| Seed | 42 |
+| Training images | 8,400 |
+| Batch size / updates per epoch | 8 / 1,050 |
+| Base and backbone learning rates | 1e-4 / 1e-4 |
+| Weight decay / gradient clipping | 5e-4 / 5 |
+| Type and calibration loss weights | 0.5 / 0.5 |
+| Backbone SHA256 | `80711cd1b37ffba12bec6c7a2a7c54efe2315ed635e6d2055fd51c3e909ede4d` |
+| Training source fingerprint | `80750e78bb09b7f33691af9d0f4539123f3c4cde807807d6f5312354b9ea3db2` |
+| Model tensor schema | `97ba24a9c38b5056dc9855868c012b1f55ec01b09c37e5b019ff919cbfa1d19e` |
+| Released checkpoint SHA256 | `9ecb3ff75ae1fd33fa3d61e824a976825bfa586a77105541f7a05519b60125d9` |
+| Released checkpoint size | 113,714,539 bytes |
 
-The manifest must remain pending until these steps complete. A successful
-random-weight forward, one-step optimizer test, or strict roundtrip does not
-establish trained accuracy or paper reproducibility.
+The source fingerprint is computed from the source files recorded with the
+training run. The training record also stores each file hash, the configuration,
+runtime package versions, the data split hashes, and the SHA256 of the full
+training checkpoint. The release checkpoint contains the trained model weights
+and is loaded with an exact tensor-schema check.
 
-## Identity
+## USC12K Data and Evaluation
 
-Checkpoints include a format version, architecture, exact model variant,
-backbone, tensor-schema hash, training configuration, source-file fingerprints,
-data identity and initialization hash. Each evaluation identifies its checkpoint
-by SHA256. Unsupported weights are rejected; tensor mismatches are never hidden
-with partial loading or fallback parameter values.
+The split contains 8,400 training images and 3,600 validation images. Validation
+has 900 images for each of Scene-A, Scene-B, Scene-C, and Scene-D. SHA256 hashes
+of the train, validation, and scene split lists are recorded in
+[`../benchmarks/usc12k_segdis_training.json`](../benchmarks/usc12k_segdis_training.json)
+and in the evaluation result.
 
-Input dataset fingerprints identify split lists or relative names/file sizes.
-The latter is explicitly not a content hash of every dataset image. Dataset
-distribution and annotations must be verified independently.
+The evaluation protocol uses bilinear image resize and nearest-neighbor class
+resize to 352 x 352. Predictions are raw three-class argmax with class order
+background/SOD/COD. Scene labels do not change predictions. Integer confusion
+matrices are summed before computing dataset-level metrics. Exported label maps
+are scored at 352 x 352 without resizing or per-image normalization.
 
-Exact floating-point training equality across different GPUs/software versions
-is not promised. The protocol, code, initialization, data split and seed are
-recorded so differences can be inspected rather than concealed.
+The reported evaluation, including all four scene results, is in
+[`../benchmarks/usc12k_segdis_metrics.json`](../benchmarks/usc12k_segdis_metrics.json).
+It identifies the exact full training checkpoint used for the metrics. The
+released inference checkpoint contains the same model weights and can be
+evaluated with the command in the repository README.
+
+## Verification
+
+Checkpoint loading validates the architecture metadata, model variant, input
+condition, model tensor schema, and every state-dictionary tensor. It uses
+strict loading; missing or unexpected tensors are errors. The published
+checkpoint was strictly loaded by the matching source and passed a finite
+352 x 352 CPU forward pass. Its three output probabilities sum to one at every
+pixel.
+
+Run the unit tests in the pinned environment with:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+To reproduce benchmark metrics, use the released checkpoint and the same
+USC12K image files and split lists. The stored split hashes allow those lists to
+be checked. Exact bitwise equality across different GPU models and library
+builds is not guaranteed; the data protocol, source, initialization, seed, and
+training settings are recorded for comparison.

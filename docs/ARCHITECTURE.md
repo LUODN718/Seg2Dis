@@ -10,12 +10,10 @@ The guide is a 7x7 reflected average blur of squared Master probability.
 Uncertainty is 4P(1-P). The residual encoder receives normalized original RGB,
 guide and uncertainty; it does not erase the RGB input. Coarse scale blocks
 propagate context; the final region stage and boundary branches update the mask.
-The complete configuration disables learned foreground gating. These fixed
-choices do not introduce another experimental mode or image-frequency path.
+The complete configuration disables learned foreground gating.
 
-The smooth global and sharp ROI names describe boundary-refinement behavior,
-not low/high image-frequency decompositions. The sharp ROI is proposed from
-foreground/boundary evidence and pasted back before the bounded mask update.
+Boundary refinement combines global evidence with local ROI evidence before
+the bounded mask update.
 
 The semantic head pools foreground/background vectors from S3, forms their
 relation, independently offsets two type queries, matches local semantic
