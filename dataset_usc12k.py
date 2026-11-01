@@ -44,6 +44,8 @@ class USC12KDataset(Dataset):
         self.ids = [line.strip() for line in split_file.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
         if not self.ids:
             raise RuntimeError(f"USC12K split is empty: {split_file}")
+        if len(self.ids) != len(set(self.ids)):
+            raise ValueError(f"Duplicate USC12K IDs: {split_file}")
 
         self.image_dir = self.root / "JPEGImages"
         self.label_dir = self.root / "SegmentationClass"

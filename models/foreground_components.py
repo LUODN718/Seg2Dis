@@ -142,8 +142,9 @@ class ForegroundEncoderDecoder(nn.Module):
         self.master_decoder = MasterDecoder(self.stage_channels, CFG.master_dim)
 
     def _load_backbone(self, checkpoint: Optional[str]) -> None:
-        explicitly_requested = bool(checkpoint)
-        checkpoint = checkpoint or str(CFG.default_backbone_checkpoint)
+        if not checkpoint:
+            return
+        explicitly_requested = True
         if not os.path.isfile(checkpoint):
             if explicitly_requested:
                 raise FileNotFoundError(
@@ -160,12 +161,12 @@ class ForegroundEncoderDecoder(nn.Module):
         }
         model_state = self.backbone.state_dict()
         compatible_state = self._compatible_pvt_state(clean_state, model_state)
-        if explicitly_requested and len(compatible_state) < int(0.9 * len(model_state)):
+        if len(compatible_state) != len(model_state):
             raise RuntimeError(
                 "Backbone checkpoint is incompatible: loaded only "
                 f"{len(compatible_state)}/{len(model_state)} tensors from {checkpoint}"
             )
-        result = self.backbone.load_state_dict(compatible_state, strict=False)
+        result = self.backbone.load_state_dict(compatible_state, strict=True)
         mode = "features_only" if self._features_only_backbone else "base"
         print(
             "[ForegroundEncoderDecoder] loaded backbone "

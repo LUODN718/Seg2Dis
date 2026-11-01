@@ -1,88 +1,82 @@
-"""Evaluate SegDis with the USC12K three-class protocol."""
-
-from __future__ import annotations
-
+"""Fixed USC12K three-class and raw P0/Pu binary evaluation."""
 import argparse
-import json
 from pathlib import Path
-
+import numpy as np
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
 from dataset_usc12k import USC12KDataset
-from models import build_model, three_class_probability, validate_checkpoint
-from utils.metrics import SegmentationMetric
+from infer import save_prediction
+from utils.checkpoint import load_model
 from utils.evaluation import PROTOCOL
+from utils.foreground_metrics import ForegroundMetrics,BINARY_PROTOCOL
+from utils.metrics import SegmentationMetric
+from utils.runtime import atomic_save,resolve_device
+from utils.data_audit import split_fingerprints
 
+SCENES=('Scene-A','Scene-B','Scene-C','Scene-D')
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser("Evaluate SegDis on USC12K")
-    parser.add_argument("--usc_root", required=True)
-    parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--backbone_name", default=None, choices=("pvt_v2_b2", "pvt_v2_b3"))
-    parser.add_argument("--split", default="val")
-    parser.add_argument("--output", default="./results/segdis_val.json")
-    parser.add_argument(
-        "--image_size", type=int, default=352,
-        help="Fixed USCNet/main-table evaluation size; only 352 is supported.",
-    )
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--workers", type=int, default=4)
-    parser.add_argument("--gpu", type=int, default=0)
-    return parser.parse_args()
-
-
-def main() -> None:
-    args = parse_args()
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required for evaluation")
-    device = torch.device(f"cuda:{args.gpu}")
-    checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    validate_checkpoint(checkpoint)
-    image_size = int(args.image_size)
-    if image_size != 352:
-        raise ValueError(
-            "The reported USC12K protocol evaluates both input and GT at 352x352; "
-            f"got --image_size {image_size}."
-        )
-    backbone_name = args.backbone_name or checkpoint.get("backbone_name", "pvt_v2_b2")
-    model = build_model(backbone_name=backbone_name).to(device)
-    model.load_state_dict(checkpoint.get("model_state", checkpoint), strict=True)
+def evaluate_usc(model,root,split,device,batch_size=4,workers=0,predictions=None,probabilities=None):
+    selected=SCENES if split=='val' else (split,)
+    if split=='val':
+        val=USC12KDataset(root,'val',352,False).ids
+        scene_ids=[s for scene in selected for s in USC12KDataset(root,scene,352,False).ids]
+        if len(scene_ids)!=len(set(scene_ids)) or set(scene_ids)!=set(val):
+            raise ValueError('Scene lists must partition val exactly')
+    has_types=model.variant!='flr'
+    overall=SegmentationMetric();scenes={};foreground={}
+    abc={head:ForegroundMetrics() for head in ('P0','Pu')}
+    all_binary={head:ForegroundMetrics() for head in ('P0','Pu')}
+    images=0
     model.eval()
-
-    dataset = USC12KDataset(args.usc_root, args.split, image_size, training=False)
-    loader = DataLoader(
-        dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, pin_memory=True
-    )
-    metric = SegmentationMetric(3)
     with torch.inference_mode():
-        for batch in tqdm(loader, desc=f"SegDis {args.split}"):
-            output = model(batch["image"].to(device, non_blocking=True))
-            probability = three_class_probability(output)
-            if probability.shape[-2:] != (352, 352):
-                raise RuntimeError(
-                    "SegDis must emit 352x352 probabilities under the USCNet protocol, got "
-                    f"{tuple(probability.shape[-2:])}."
-                )
-            metric.update(probability.argmax(dim=1), batch["semantic"])
+        for scene in selected:
+            dataset=USC12KDataset(root,scene,352,False)
+            metric=SegmentationMetric();binary={head:ForegroundMetrics() for head in ('P0','Pu')}
+            loader=DataLoader(dataset,batch_size=batch_size,shuffle=False,num_workers=workers)
+            for batch in tqdm(loader,desc=scene,mininterval=10):
+                output=model(batch['image'].to(device))
+                if has_types:
+                    probability=output['three_class_probability']
+                    if probability.shape[1:]!=(3,352,352):raise ValueError('Unexpected three-class shape')
+                    if not torch.isfinite(probability).all():raise FloatingPointError('Nonfinite type probability')
+                    metric.update(probability.argmax(1),batch['semantic'])
+                for i,sid in enumerate(batch['sample_id']):
+                    semantic=batch['semantic'][i].numpy();target=semantic>0
+                    values={head:output[head][i,0].cpu().numpy() for head in ('P0','Pu')}
+                    for head,value in values.items():
+                        binary[head].step(value,target,scene!='Scene-D',semantic)
+                        all_binary[head].step(value,target,False,semantic)
+                        if scene!='Scene-D':abc[head].step(value,target,True,semantic)
+                    if predictions is not None and has_types:
+                        save_prediction(probability[i],sid,Path(predictions)/scene,'color')
+                    if probabilities is not None:
+                        folder=Path(probabilities)/scene;folder.mkdir(parents=True,exist_ok=True)
+                        np.savez_compressed(folder/f'{sid}.npz',**values)
+            if has_types:
+                overall.confusion_matrix+=metric.confusion_matrix
+                scenes[scene]={'images':len(dataset),**metric.compute()}
+            else:scenes[scene]={'images':len(dataset),'three_class_metrics':None,'reason':'binary foreground model'}
+            foreground[scene]={head:acc.compute() for head,acc in binary.items()}
+            images+=len(dataset)
+    return {'images':images,'split':split,'protocol':PROTOCOL,'dataset_split_sha256':split_fingerprints(root),
+            'overall':overall.compute() if has_types else None,'scenes':scenes,
+            'foreground':{'protocol':BINARY_PROTOCOL,'scenes':foreground,
+                'all_selected_scenes':{h:a.compute() for h,a in all_binary.items()},
+                'Scene-ABC':{h:a.compute() for h,a in abc.items() if a.count}}}
 
-    result = {
-        "method": "SegDis",
-        "architecture": model.architecture,
-        "split": args.split,
-        "images": len(dataset),
-        "image_size": image_size,
-        "classes": ["background", "SOD", "COD"],
-        "protocol": PROTOCOL,
-        **metric.compute(),
-    }
-    output_path = Path(args.output)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(result, indent=2, allow_nan=False), encoding="utf-8")
-    print(json.dumps(result, indent=2))
-    print(f"[Saved] {output_path.resolve()}")
+def main():
+    p=argparse.ArgumentParser(__doc__)
+    p.add_argument('--checkpoint',required=True,type=Path);p.add_argument('--usc_root',required=True,type=Path)
+    p.add_argument('--split',default='val',choices=('val',*SCENES))
+    p.add_argument('--output',required=True,type=Path);p.add_argument('--device',default='auto')
+    p.add_argument('--batch_size',type=int,default=4);p.add_argument('--workers',type=int,default=0)
+    p.add_argument('--predictions',type=Path);p.add_argument('--probabilities',type=Path)
+    args=p.parse_args();device=resolve_device(args.device)
+    if device.type=='cpu':torch.set_num_threads(2)
+    model,state,identity=load_model(args.checkpoint,device);del state
+    result=evaluate_usc(model,args.usc_root,args.split,device,args.batch_size,args.workers,args.predictions,args.probabilities)
+    result['identity']=identity;atomic_save(args.output,result)
+    print(str(args.output.resolve()),flush=True)
 
-
-if __name__ == "__main__":
-    main()
+if __name__=='__main__':main()
